@@ -248,6 +248,37 @@ describe("attendance service — approve/reject", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(repo.findHolidaysInRange).mockResolvedValue([]);
+    vi.mocked(employeeService.getTeamView).mockResolvedValue({
+      manager: null,
+      directReports: [{ id: EMPLOYEE_ID, name: "A", departmentId: null, designationId: null }],
+    } as never);
+  });
+
+  it("rejects a Manager deciding on someone who is not their direct report (FR-014)", async () => {
+    vi.mocked(repo.findLeaveRequestById).mockResolvedValue(
+      makeLeaveRequest({ employeeId: "emp_other_team" }) as never,
+    );
+
+    await expect(approveLeaveRequest(ORG_ID, "req_1", MANAGER_ACTOR)).rejects.toMatchObject({
+      code: "FORBIDDEN",
+      status: 403,
+    });
+    await expect(
+      rejectLeaveRequest(ORG_ID, "req_1", MANAGER_ACTOR, { reason: "No" }),
+    ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
+    expect(repo.updateLeaveRequest).not.toHaveBeenCalled();
+  });
+
+  it("lets HR decide org-wide without a reporting-line check (FR-015)", async () => {
+    vi.mocked(repo.findLeaveRequestById).mockResolvedValue(
+      makeLeaveRequest({ employeeId: "emp_other_team" }) as never,
+    );
+    vi.mocked(repo.updateLeaveRequest).mockResolvedValue(makeLeaveRequest({ status: "REJECTED" }) as never);
+
+    await rejectLeaveRequest(ORG_ID, "req_1", HR_ACTOR, { reason: "Coverage" });
+
+    expect(employeeService.getTeamView).not.toHaveBeenCalled();
+    expect(repo.updateLeaveRequest).toHaveBeenCalled();
   });
 
   it("rejects self-approval unconditionally, even for HR/Admin (research.md R4)", async () => {

@@ -435,3 +435,10 @@ With multiple developers, after Foundational completes:
   either module anticipated by any task here.
 - Commit after each task or logical group.
 - Stop at any checkpoint to validate a story independently via quickstart.md.
+
+**Post-implementation fix 2026-10-20**: `POST /leave-requests/:id/approve|reject` checked
+self-approval and status but not the reporting line, so a Manager could decide a request from
+outside their team by id (FR-014 only scoped the queue). `decideLeaveRequest` now requires a
+Manager's caller to be the requester's current manager (live `getTeamView`, research.md R5) and
+returns 403 `FORBIDDEN` otherwise; HR/Admin still decide org-wide (FR-015). Found by
+001's end-to-end run (`scripts/e2e-001-auth.mjs`); unit tests added in `service.test.ts`.

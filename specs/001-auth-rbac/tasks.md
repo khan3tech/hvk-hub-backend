@@ -155,13 +155,12 @@ different, role-appropriate navigation set (quickstart.md Scenario 1).
   `apps/web` copy per constitution Principle II — no shared package). Required extending
   `authenticate` (T010) with a refreshToken-cookie fallback since a Server Component has no
   in-memory Bearer access token to send — see tasks.md Notes.
-- [ ] T023 [US1] **BLOCKED on T006** — Run quickstart.md Scenario 1 end-to-end (all four seeded
-  roles) and confirm SC-001 (dashboard renders within 5s) and SC-004 (clear, non-technical
-  refusal messages). Requires a migrated database and seed data (prisma/seed.ts is still an
-  empty stub — seeding users per role is itself unimplemented). Verified instead via: full
-  typecheck of both apps (clean), the 8 backend + 3 frontend automated tests (all passing),
-  and a standalone script confirming all 5 `/auth/*` routes register correctly in the OpenAPI
-  document.
+- [X] T023 [US1] Run quickstart.md Scenario 1 end-to-end (all four seeded roles) and confirm
+  SC-001 and SC-004. Verified via `scripts/e2e-001-auth.mjs` (43 checks, all passing) against the live API + migrated, seeded Postgres on 2026-10-20: all four seeded roles sign in (~200–470ms API
+  round-trip, well under SC-001's 5s), `/auth/me` returns the right role, wrong password and
+  unknown email return an identical 401 `INVALID_CREDENTIALS` with a non-technical message. The
+  rendered-dashboard half of SC-001 (role-scoped nav) belongs to the frontend repo since the
+  2026-10-20 repo split.
 
 **Checkpoint**: User Story 1 fully functional — sign-in, role-scoped nav, generic error
 messages. This is the MVP; it can be demoed independently.
@@ -200,8 +199,11 @@ it succeeds without an extra sign-in (quickstart.md Scenario 2).
   inspection: the middleware only checks cookie presence, and an expired cookie is not sent by
   the browser at all, so the existing redirect-to-/login branch already covers this case with
   no code change needed.
-- [ ] T030 [US2] **BLOCKED on T006** — Run quickstart.md Scenario 2 end-to-end and confirm SC-003
-  (no forced sign-out within a continuous 8-hour session). Needs a live database; see T023.
+- [X] T030 [US2] Run quickstart.md Scenario 2 end-to-end and confirm SC-003. Verified via `scripts/e2e-001-auth.mjs` (43 checks, all passing) against the live API + migrated, seeded Postgres on 2026-10-20:
+  refresh with a valid cookie returns a new access token that works, the rotated cookie keeps
+  renewing (so a session continues past any number of 15-minute access-token windows), and a
+  missing/expired cookie returns 401 `INVALID_SESSION`. A literal 8-hour wall-clock session was
+  not observed; SC-003 follows from rotation working within the 7-day refresh window.
 
 **Checkpoint**: User Stories 1 AND 2 both work independently — sign-in plus transparent session
 renewal.
@@ -276,25 +278,29 @@ perform it and confirm refusal (quickstart.md Scenarios 3, 4, 5).
   access token itself hasn't expired yet — the 15-minute window is the accepted exposure cap
   per research.md R1, but an explicit offboarded-employee check closes it faster when the data
   is already being read for `req.user`.
-- [ ] T037 [US3] **DEFERRED** — Implement role/scope enforcement helpers in each existing
-  module's `service.ts` (attendance/employee/payroll/recruitment). These modules' service.ts
-  files are still empty `export {}` stubs — specs 002-005 haven't been through `/speckit-plan`
-  yet, so there is no business logic to attach a scope check to. Doing this now would mean
-  writing 002-005's service layers ad hoc inside the 001 feature, which isn't this feature's
-  scope. Revisit once each module's own plan/tasks exist.
-- [ ] T038 [US3] **DEFERRED** — same reason as T037: the route stubs
-  (`apps/api/src/modules/{attendance,employee,payroll,recruitment}/routes.ts`) declare no
-  endpoints yet to attach `authorize(...)` to.
+- [X] T037 [US3] Role/scope enforcement in each module's `service.ts` — landed with 002–004's own
+  implementations (employee profile/directory scoping, leave self-filing and approval scoping,
+  payslip/salary-structure scoping). Recruitment remains a stub and gets its RBAC with
+  005-recruitment-ats. **Bug found during the T040 end-to-end run and fixed**: a Manager could
+  approve/reject leave for someone outside their team by calling
+  `POST /leave-requests/:id/approve|reject` directly — only the queue was scoped.
+  `decideLeaveRequest` now checks the live reporting line (same `getTeamView` source as the
+  queue) and returns 403 `FORBIDDEN`; unit tests added.
+- [X] T038 [US3] `authorize(...)` on module routes — every employee/attendance/payroll route
+  uses `authenticate`, and every role-restricted one uses `authorize(...)` (confirmed by
+  inspection of each `routes.ts`). Recruitment routes come with 005.
 - [X] T039 [US3] Standardize the 403 refusal response across all of the above to
   `{ error: { code: "FORBIDDEN", message } }` with a clear, non-technical `message` (SC-004) —
   verified: `authorize()` (T011) and the central `errorHandler.ts`'s `DomainError` path both
   already produce this exact shape, so any future module reusing `authorize`/`DomainError`
   gets this for free without hand-rolling it.
-- [ ] T040 [US3] **BLOCKED on T006** — Run quickstart.md Scenarios 3, 4, and 5 end-to-end and
-  confirm SC-002. Scenario 3 also partially blocked on T037/T038 (no other module's RBAC is
-  wired yet to test against) — the unlock-flow portion (Scenario 4) and offboarding-revocation
-  portion (Scenario 5) are implemented and covered by the automated unit tests, but not yet
-  runnable end-to-end without a database.
+- [X] T040 [US3] Run quickstart.md Scenarios 3, 4, and 5 end-to-end and confirm SC-002. Verified
+  via `scripts/e2e-001-auth.mjs` (43 checks, all passing) against the live API + migrated, seeded Postgres on 2026-10-20: Employee is refused another's profile, org-wide payslips, another's salary
+  structure and employee creation; Manager is refused payroll runs and approving a non-report's
+  leave (after the T037 fix) while the report's own manager can approve; lockout after 3 failures
+  returns 403 `ACCOUNT_LOCKED` even with the right password, Employee/Manager unlock is 403,
+  Admin unlock is 200 and writes an `auth.account_unlocked` ActivityLog row; offboarding refuses
+  the live access token, revokes the refresh token and blocks sign-in.
 
 **Checkpoint**: All three user stories independently functional — sign-in, session persistence,
 and full RBAC enforcement including lockout and offboarding revocation.
@@ -327,9 +333,10 @@ and full RBAC enforcement including lockout and offboarding revocation.
   globally in `apps/api/src/app.ts`, not just on the auth module. Confirmed by inspection:
   `helmet()` and the CORS allowlist middleware are both registered before any route (including
   the newly-mounted `/api/auth`), so they apply repo-wide by construction, no change needed.
-- [ ] T045 **BLOCKED on T006** — Run full `quickstart.md` checklist end-to-end (all 5 scenarios,
-  all 4 success criteria) as final acceptance validation. Requires a live, migrated,
-  seeded database. See "What's left" note below.
+- [X] T045 Run full `quickstart.md` checklist end-to-end (all 6 scenarios, all 4 success
+  criteria) as final acceptance validation — done via `scripts/e2e-001-auth.mjs` (43 checks, all passing) against the live API + migrated, seeded Postgres on 2026-10-20, including Scenario 6 (signing in on
+  device B revokes device A's refresh token). UI-only steps (redirects, nav) are verified in the
+  frontend repo.
 
 ---
 
@@ -506,3 +513,14 @@ refresh-cookie's `path` was hardcoded to `/auth` while the router is mounted at 
 backend tests (was 8) and 3 frontend tests still pass; `research.md`, `data-model.md`,
 `contracts/auth-api.md`, and `quickstart.md` were updated during the preceding `/speckit-plan`
 pass to describe this behavior — this implementation pass is what made the code match them.
+
+**Update 2026-10-20 — feature closed (45/45)**: after the backend/frontend repo split, the
+remaining six tasks were closed. T037/T038 had in fact landed with 002–004 (recruitment's RBAC
+moves to 005). T023/T030/T040/T045 were run end-to-end against the live API and a migrated,
+seeded Postgres with the new `scripts/e2e-001-auth.mjs` (43 checks, every quickstart scenario's
+API side), which found one real RBAC hole: a Manager could approve/reject leave for someone
+outside their team by calling the decide endpoints directly (fixed in 003's
+`decideLeaveRequest`, with unit tests). Also fixed in passing: `npm run dev`/`npm run seed`
+never loaded `.env` (now `--env-file=.env`), the `pino-http` NodeNext type error, and
+leave-request unit tests that broke once their fixture dates fell into the past. UI-level checks
+(redirects, role-scoped nav) now live in the frontend repo.
