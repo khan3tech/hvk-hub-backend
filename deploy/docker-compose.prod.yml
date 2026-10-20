@@ -1,0 +1,46 @@
+# Production stack for a single EC2 host: Postgres + API + Caddy (reverse proxy on :80/:443).
+# Run by deploy/remote-deploy.sh with `--env-file /opt/teamloom/.env`; secrets live only there.
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    env_file: /opt/teamloom/.env
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build: ..
+    image: teamloom-api:latest
+    restart: unless-stopped
+    env_file: /opt/teamloom/.env
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      TRUST_PROXY: 1
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    env_file: /opt/teamloom/.env
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - api
+
+volumes:
+  postgres-data:
+  caddy-data:
+  caddy-config:

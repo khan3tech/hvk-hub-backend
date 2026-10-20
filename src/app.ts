@@ -28,6 +28,11 @@ import { payrollRouter } from "./modules/payroll/routes.js";
 
 export function createApp() {
   const app = express();
+  // Behind a reverse proxy (Caddy on EC2) set TRUST_PROXY to the hop count so req.ip — and
+  // the login rate limiter keyed on it — sees the real client address, not the proxy's.
+  if (process.env.TRUST_PROXY) {
+    app.set("trust proxy", Number(process.env.TRUST_PROXY));
+  }
 
   app.use(helmet());
   app.use(

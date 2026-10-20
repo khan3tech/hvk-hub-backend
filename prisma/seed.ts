@@ -10,7 +10,8 @@ const prisma = new PrismaClient();
 // Matches apps/api's controller.ts fallback (`process.env.DEFAULT_ORG_ID ?? "default"`) so
 // seeded users are actually reachable without additional env config.
 const ORG_ID = process.env.DEFAULT_ORG_ID ?? "default";
-const SEED_PASSWORD = "Password123!";
+// SEED_PASSWORD overrides the well-known dev password on any shared/public environment.
+const SEED_PASSWORD = process.env.SEED_PASSWORD ?? "Password123!";
 
 async function main() {
   const passwordHash = await bcrypt.hash(SEED_PASSWORD, 12);
@@ -156,7 +157,9 @@ async function main() {
     create: { orgId: ORG_ID, currency: "INR" },
   });
 
-  console.log(`Seeded org "${ORG_ID}" with 4 users (password: ${SEED_PASSWORD}):`);
+  console.log(
+    `Seeded org "${ORG_ID}" with 4 users (password: ${process.env.SEED_PASSWORD ? "from SEED_PASSWORD" : SEED_PASSWORD}):`,
+  );
   console.log("  admin@teamloom.dev    (ADMIN)");
   console.log("  hr@teamloom.dev       (HR)");
   console.log("  manager@teamloom.dev  (MANAGER)");
