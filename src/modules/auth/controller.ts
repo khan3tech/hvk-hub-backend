@@ -9,9 +9,12 @@ import type { AccessTokenPayload } from "../../lib/jwt.js";
 
 const REFRESH_COOKIE = "refreshToken";
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
+// Defaults to on in production. COOKIE_SECURE=false only for a production build served over
+// plain HTTP (e.g. a fresh EC2 before its domain/TLS exists) — browsers drop Secure cookies there.
+const COOKIE_SECURE = process.env.COOKIE_SECURE ? process.env.COOKIE_SECURE === "true" : IS_PRODUCTION;
 const REFRESH_COOKIE_OPTIONS = {
   httpOnly: true,
-  secure: IS_PRODUCTION,
+  secure: COOKIE_SECURE,
   // "strict" in production, where a reverse proxy puts apps/web and apps/api on the same
   // origin (constitution's deployment model). In local dev the two run on different ports
   // (localhost:3000 / :4000), which browsers treat as cross-origin — a Strict cookie is never

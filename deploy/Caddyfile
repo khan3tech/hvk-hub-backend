@@ -1,0 +1,6 @@
+# SITE_ADDRESS defaults to plain HTTP on :80. Set it to a hostname (e.g. api.example.com) in
+# /opt/teamloom/.env once DNS points at the Elastic IP, and Caddy fetches a TLS cert itself.
+{$SITE_ADDRESS::80} {
+	encode gzip
+	reverse_proxy api:4000
+}
