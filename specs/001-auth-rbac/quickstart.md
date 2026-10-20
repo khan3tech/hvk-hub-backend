@@ -8,10 +8,12 @@ Prerequisites: this feature implemented per plan.md/data-model.md/contracts/auth
 ```bash
 # from repo root
 npm install
-npm run --workspace apps/api prisma:migrate
-npm run --workspace apps/api seed        # creates at least one user per role (ADMIN/HR/MANAGER/EMPLOYEE)
-npm run --workspace apps/api dev         # apps/api on its configured port
-npm run --workspace apps/web dev         # apps/web on its configured port
+cp .env.example .env
+npx prisma migrate deploy
+npm run seed                            # creates at least one user per role (ADMIN/HR/MANAGER/EMPLOYEE)
+npm run dev                             # API on :4000
+node scripts/e2e-001-auth.mjs           # automated run of the API side of every scenario below
+# apps/web (frontend repo): npm run dev  # UI checks (redirects, nav) live there
 ```
 
 ## Scenario 1 — Sign in and reach a role-appropriate dashboard (User Story 1, P1)

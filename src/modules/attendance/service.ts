@@ -310,6 +310,20 @@ async function decideLeaveRequest(
     );
   }
 
+  // A Manager may only decide for their current direct reports — the same live reporting-line
+  // check as getApprovalQueue (research.md R5), so a request id from outside the queue can't
+  // be decided directly. HR/Admin decide org-wide.
+  if (actor.role === "MANAGER") {
+    const { directReports } = await getTeamView(orgId, actor);
+    if (!directReports.some((r) => r.id === request.employeeId)) {
+      throw new DomainError(
+        "FORBIDDEN",
+        "You can only decide on leave requests from your direct reports.",
+        403,
+      );
+    }
+  }
+
   if (request.status !== "PENDING") {
     throw new DomainError("ALREADY_DECIDED", "This request has already been decided.", 409);
   }
