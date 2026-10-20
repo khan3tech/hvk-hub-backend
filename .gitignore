@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Prisma
+prisma/dev.db
+prisma/migrations/.env
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor / OS
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+
+# Claude Code local settings (may hold local permissions/state, not for sharing)
+.claude/settings.local.json
+
+# Locally installed Claude Code skills (personal tooling, not part of the project)
+.agents/
+.claude/skills/frontend-design/
+skills-lock.json
+
+# Test / coverage
+coverage/
+.claude/settings.json

@@ -1,0 +1,37 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: teamloom
+      POSTGRES_PASSWORD: teamloom
+      POSTGRES_DB: teamloom
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U teamloom"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      # Overrides .env for the container network — the app talks
+      # to the "postgres" service by name, not localhost.
+      DATABASE_URL: postgresql://teamloom:teamloom@postgres:5432/teamloom
+      CORS_ALLOWED_ORIGINS: http://localhost:3000
+      PORT: 4000
+    ports:
+      - "4000:4000"
+
+volumes:
+  postgres-data:

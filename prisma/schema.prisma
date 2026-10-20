@@ -1,0 +1,1303 @@
+// TeamLoom data model — see specs/001..027 and .specify/memory/constitution.md
+// (Principle VI: every core table carries orgId from day one, single org for v0.1)
+//
+// This file covers all three roadmap tranches:
+//   v0.1  (001-005): Auth/RBAC, Employee Mgmt, Attendance & Leave, Payroll, Recruitment/ATS
+//   v1.1  (006-015): Notifications ... Multi-Tenant Activation
+//   v1.2  (016-027): Org Chart ... HR Assistant Chatbot
+// New sections are grouped and commented by spec number. See docs/feature.md for the
+// full per-feature Inputs/Outputs/Dependencies summary this schema implements.
+//
+// NOTE ON MULTI-TENANCY (015): orgId stays a plain scalar String on every model (matching
+// Constitution Principle VI's original wording), NOT a Prisma relation to Organization — this
+// keeps the v0.1-v1.2 models unchanged when 015 activates. See "Organization" below.
+//
+// SCHEMA-LEVEL GAP (flagged, not resolved here — see docs/feature.md § 009, § 002):
+// Employee.email and Employee.employeeCode are now scoped @@unique([orgId, ...]) instead of
+// globally unique (a correctness fix for 015 multi-tenancy). This does NOT resolve the
+// 009 "rehire = new employee record" assumption colliding with a former (offboarded)
+// employee's still-present email/code in the same org — that conflict needs a product decision
+// (reactivate the old record vs. relax uniqueness to exclude OFFBOARDED rows) before 009 is
+// implemented for a company with real rehires. TODO: resolve during 009's /speckit-plan.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// v0.1 — Enums (001-005)
+// ============================================================================
+
+enum Role {
+  ADMIN
+  HR
+  MANAGER
+  EMPLOYEE
+}
+
+enum EmployeeStatus {
+  ACTIVE
+  OFFBOARDED
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  ON_LEAVE
+  HOLIDAY
+}
+
+enum LeaveRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum JobPostingStatus {
+  OPEN
+  ON_HOLD
+  CLOSED
+}
+
+enum ApplicationStage {
+  APPLIED
+  SCREEN
+  INTERVIEW
+  OFFER
+  HIRED
+  REJECTED
+}
+
+enum InterviewResult {
+  PENDING
+  PASS
+  FAIL
+}
+
+// ============================================================================
+// v0.1 — Models (001-005)
+// ============================================================================
+
+model User {
+  id           String   @id @default(cuid())
+  orgId        String
+  email        String
+  passwordHash String
+  role         Role
+  employeeId   String?  @unique
+  employee     Employee? @relation(fields: [employeeId], references: [id])
+
+  // 001-auth-rbac — account lockout (FR-011/FR-012): lockedAt doubles as both the lock
+  // flag and its timestamp; no automatic unlock, only a manual Admin/HR action resets it.
+  failedLoginAttempts Int       @default(0)
+  lockedAt            DateTime?
+  refreshTokens        RefreshToken[]
+
+  // 013-sso-mfa
+  isBreakGlass       Boolean             @default(false)
+  ssoIdentityLinks   SsoIdentityLink[]
+  mfaEnrollment      MfaEnrollment?
+
+  // 006-notifications, 019-mobile-pwa
+  notifications       Notification[]
+  deviceRegistrations DeviceRegistration[]
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([orgId, email])
+  @@index([orgId])
+}
+
+// 001-auth-rbac — backs the hybrid session model (research.md R1): the access JWT stays
+// stateless (15m), but the refresh token is a stored, revocable row so sign-out (FR-003),
+// offboarding (FR-010), and lockout all take effect immediately instead of waiting for
+// natural JWT expiry. Rows are never deleted, only marked revokedAt (Principle IV, append-only).
+model RefreshToken {
+  id        String    @id @default(cuid())
+  orgId     String
+  userId    String
+  user      User      @relation(fields: [userId], references: [id])
+  tokenHash String
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@index([tokenHash])
+}
+
+model Employee {
+  id             String         @id @default(cuid())
+  orgId          String
+  employeeCode   String
+  name           String
+  email          String
+  departmentId   String?
+  department     Department?    @relation(fields: [departmentId], references: [id])
+  designationId  String?
+  designation    Designation?   @relation(fields: [designationId], references: [id])
+  managerId      String?
+  manager        Employee?      @relation("EmployeeManager", fields: [managerId], references: [id])
+  directReports  Employee[]     @relation("EmployeeManager")
+  dateOfJoining  DateTime
+  status         EmployeeStatus @default(ACTIVE)
+
+  // 026-global-multi-currency-payroll — null = org's single default (no extra burden, FR-011)
+  payrollCountry  String?
+  payrollCurrency String?
+
+  user               User?
+  attendanceRecords  Attendance[]
+  leaveRequests      LeaveRequest[]      @relation("LeaveRequester")
+  approvedLeaves     LeaveRequest[]      @relation("LeaveApprover")
+  leaveBalances      LeaveBalance[]
+  salaryStructures   SalaryStructure[]
+  payslips           Payslip[]
+  interviewRounds    InterviewRound[]
+  activityLogs       ActivityLog[]
+
+  // 007-employee-onboarding
+  onboardingChecklist       OnboardingChecklist?
+  onboardingTasksCompleted  OnboardingTask[]
+
+  // 008-document-esignature
+  documents                Document[]
+  signatureRequestsReceived SignatureRequest[]
+  policyAcknowledgments     PolicyAcknowledgment[]
+
+  // 009-resignation-exit
+  resignations       Resignation[]
+  exitTasksCompleted  ExitTask[]
+
+  // 010-statutory-payroll-tax
+  statutoryExemptions StatutoryExemption[]
+
+  // 012-performance-management
+  goals             Goal[]
+  reviews           Review[] @relation("ReviewEmployee")
+  reviewsAsManager  Review[] @relation("ReviewManager")
+
+  // 014-asset-expense-management
+  assetAssignments        AssetAssignment[]
+  expenseClaims           ExpenseClaim[] @relation("ExpenseClaimant")
+  expenseClaimsApproved   ExpenseClaim[] @relation("ExpenseApprover")
+
+  // 017-hr-helpdesk-ticketing
+  ticketsRaised    Ticket[]      @relation("TicketRequester")
+  ticketsAssigned  Ticket[]      @relation("TicketAssignee")
+  ticketReplies    TicketReply[]
+
+  // 021-referral-program
+  referralsMade        Referral[]
+  referredApplications Application[]
+
+  // 022-background-verification
+  hireOverrides HireOverride[]
+
+  // 023-learning-development
+  courseAssignments CourseAssignment[]
+
+  // 024-succession-planning
+  successionPlanAsPosition SuccessionPlan?
+  successionCandidacies    SuccessionCandidate[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([orgId, email])
+  @@unique([orgId, employeeCode])
+  @@index([orgId])
+  @@index([managerId])
+  @@index([departmentId])
+}
+
+model Department {
+  id             String     @id @default(cuid())
+  orgId          String
+  name           String
+  headEmployeeId String?
+  employees      Employee[]
+  jobPostings    JobPosting[]
+
+  // 018-employee-engagement-surveys, 012-performance-management
+  surveys      Survey[]
+  reviewCycles ReviewCycle[]
+
+  @@unique([orgId, name])
+}
+
+model Designation {
+  id        String     @id @default(cuid())
+  orgId     String
+  title     String
+  level     Int?
+  employees Employee[]
+
+  @@unique([orgId, title])
+}
+
+model Attendance {
+  id         String           @id @default(cuid())
+  orgId      String
+  employeeId String
+  employee   Employee         @relation(fields: [employeeId], references: [id])
+  date       DateTime         @db.Date
+  checkIn    DateTime?
+  checkOut   DateTime?
+  status     AttendanceStatus @default(PRESENT)
+
+  @@unique([employeeId, date])
+  @@index([orgId, date])
+}
+
+model LeaveType {
+  id           String         @id @default(cuid())
+  orgId        String
+  name         String
+  isPaid       Boolean        @default(true)
+  defaultDays  Int
+  leaveRequests LeaveRequest[]
+  leaveBalances LeaveBalance[]
+
+  @@unique([orgId, name])
+}
+
+model LeaveBalance {
+  id          String    @id @default(cuid())
+  orgId       String
+  employeeId  String
+  employee    Employee  @relation(fields: [employeeId], references: [id])
+  leaveTypeId String
+  leaveType   LeaveType @relation(fields: [leaveTypeId], references: [id])
+  year        Int
+  allocated   Float
+  used        Float     @default(0)
+
+  @@unique([employeeId, leaveTypeId, year])
+}
+
+model LeaveRequest {
+  id               String             @id @default(cuid())
+  orgId            String
+  employeeId       String
+  employee         Employee           @relation("LeaveRequester", fields: [employeeId], references: [id])
+  leaveTypeId      String
+  leaveType        LeaveType          @relation(fields: [leaveTypeId], references: [id])
+  startDate        DateTime           @db.Date
+  endDate          DateTime           @db.Date
+  days             Float
+  status           LeaveRequestStatus @default(PENDING)
+  approverId       String?
+  approver         Employee?          @relation("LeaveApprover", fields: [approverId], references: [id])
+  rejectionReason  String?
+  createdAt        DateTime           @default(now())
+  decidedAt        DateTime?
+
+  @@index([orgId, status])
+}
+
+model Holiday {
+  id     String   @id @default(cuid())
+  orgId  String
+  name   String
+  date   DateTime @db.Date
+  region String?
+
+  @@index([orgId, date])
+}
+
+model SalaryStructure {
+  id            String   @id @default(cuid())
+  orgId         String
+  employeeId    String
+  employee      Employee @relation(fields: [employeeId], references: [id])
+  basic         Float
+  hra           Float
+  allowances    Json
+  effectiveFrom DateTime @db.Date
+
+  // 026-global-multi-currency-payroll — null = org's single default currency
+  currency String?
+
+  @@index([employeeId, effectiveFrom])
+}
+
+model Payslip {
+  id          String   @id @default(cuid())
+  orgId       String
+  employeeId  String
+  employee    Employee @relation(fields: [employeeId], references: [id])
+  periodMonth Int
+  periodYear  Int
+  earnings    Json
+  deductions  Json
+  netPay      Float
+  generatedAt DateTime @default(now())
+
+  // 026-global-multi-currency-payroll — the currency netPay/earnings/deductions are expressed
+  // in; immutable once generated even if the employee's currency assignment later changes
+  currency String?
+
+  @@unique([employeeId, periodMonth, periodYear])
+}
+
+model JobPosting {
+  id           String           @id @default(cuid())
+  orgId        String
+  title        String
+  departmentId String
+  department   Department       @relation(fields: [departmentId], references: [id])
+  status       JobPostingStatus @default(OPEN)
+  openings     Int
+  applications Application[]
+
+  @@index([orgId, status])
+}
+
+model Candidate {
+  id           String        @id @default(cuid())
+  orgId        String
+  name         String
+  email        String
+  resumeUrl    String
+  applications Application[]
+
+  // 008-document-esignature
+  documents                 Document[]
+  signatureRequestsReceived SignatureRequest[]
+
+  @@index([orgId])
+}
+
+model Application {
+  id              String           @id @default(cuid())
+  orgId           String
+  candidateId     String
+  candidate       Candidate        @relation(fields: [candidateId], references: [id])
+  jobPostingId    String
+  jobPosting      JobPosting       @relation(fields: [jobPostingId], references: [id])
+  stage           ApplicationStage @default(APPLIED)
+  interviewRounds InterviewRound[]
+  createdAt       DateTime         @default(now())
+
+  // 020-public-careers-portal, 021-referral-program — where this application came from
+  source             ApplicationSource @default(INTERNAL)
+  referredByEmployeeId String?
+  referredBy          Employee?         @relation(fields: [referredByEmployeeId], references: [id])
+
+  // 021-referral-program, 022-background-verification
+  referral        Referral?
+  backgroundCheck BackgroundCheck?
+  hireOverrides   HireOverride[]
+
+  @@unique([candidateId, jobPostingId])
+  @@index([orgId, stage])
+}
+
+model InterviewRound {
+  id            String          @id @default(cuid())
+  orgId         String
+  applicationId String
+  application   Application     @relation(fields: [applicationId], references: [id])
+  interviewerId String
+  interviewer   Employee        @relation(fields: [interviewerId], references: [id])
+  scheduledAt   DateTime
+  result        InterviewResult @default(PENDING)
+
+  @@index([applicationId])
+}
+
+// Append-only audit trail — Principle IV (Auditability & Data Integrity)
+model ActivityLog {
+  id         String   @id @default(cuid())
+  orgId      String
+  actorId    String
+  actor      Employee @relation(fields: [actorId], references: [id])
+  action     String
+  entity     String
+  entityId   String
+  before     Json?
+  after      Json?
+  createdAt  DateTime @default(now())
+
+  @@index([orgId, entity, entityId])
+}
+
+// ============================================================================
+// 006-notifications
+// ============================================================================
+
+model Notification {
+  id        String   @id @default(cuid())
+  orgId     String
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  type      String
+  message   String
+  link      String?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([orgId, userId, read])
+}
+
+// ============================================================================
+// 007-employee-onboarding
+// ============================================================================
+
+enum OnboardingOwnerRole {
+  HR
+  MANAGER
+  IT
+  EMPLOYEE
+}
+
+enum TaskCompletionStatus {
+  INCOMPLETE
+  COMPLETE
+}
+
+// TODO(007): the spec requires a "standard, configurable set of default tasks" (FR-001, FR-010)
+// but does not enumerate them — seed content is a planning-time decision, not specified here.
+model OnboardingTaskTemplate {
+  id          String              @id @default(cuid())
+  orgId       String
+  description String
+  ownerRole   OnboardingOwnerRole @default(HR)
+  order       Int
+
+  @@index([orgId, order])
+}
+
+model OnboardingChecklist {
+  id         String   @id @default(cuid())
+  orgId      String
+  employeeId String   @unique
+  employee   Employee @relation(fields: [employeeId], references: [id])
+  createdAt  DateTime @default(now())
+  tasks      OnboardingTask[]
+
+  @@index([orgId])
+}
+
+model OnboardingTask {
+  id            String                @id @default(cuid())
+  orgId         String
+  checklistId   String
+  checklist     OnboardingChecklist   @relation(fields: [checklistId], references: [id])
+  description   String
+  ownerRole     OnboardingOwnerRole   @default(HR)
+  status        TaskCompletionStatus  @default(INCOMPLETE)
+  completedById String?
+  completedBy   Employee?             @relation(fields: [completedById], references: [id])
+  completedAt   DateTime?
+
+  @@index([checklistId, status])
+}
+
+// ============================================================================
+// 008-document-esignature
+// ============================================================================
+
+enum DocumentOwnerType {
+  EMPLOYEE
+  CANDIDATE
+}
+
+enum SignatureStatus {
+  AWAITING
+  SIGNED
+}
+
+model Document {
+  id          String            @id @default(cuid())
+  orgId       String
+  ownerType   DocumentOwnerType
+  employeeId  String?
+  employee    Employee?         @relation(fields: [employeeId], references: [id])
+  candidateId String?
+  candidate   Candidate?        @relation(fields: [candidateId], references: [id])
+  label       String
+  fileUrl     String
+  version     Int               @default(1)
+  isCurrent   Boolean           @default(true)
+  uploadedAt  DateTime          @default(now())
+
+  signatureRequests      SignatureRequest[]
+  courseAssignmentProofs CourseAssignment[]
+  policies               Policy[]
+
+  @@index([orgId, employeeId, label])
+  @@index([orgId, candidateId, label])
+}
+
+model SignatureRequest {
+  id                    String            @id @default(cuid())
+  orgId                 String
+  documentId            String
+  document              Document          @relation(fields: [documentId], references: [id])
+  recipientType         DocumentOwnerType
+  recipientEmployeeId   String?
+  recipientEmployee     Employee?         @relation(fields: [recipientEmployeeId], references: [id])
+  recipientCandidateId  String?
+  recipientCandidate    Candidate?        @relation(fields: [recipientCandidateId], references: [id])
+  status                SignatureStatus   @default(AWAITING)
+  signedAt              DateTime?
+  signedByName          String?
+  createdAt             DateTime          @default(now())
+
+  @@index([orgId, status])
+}
+
+model Policy {
+  id            String   @id @default(cuid())
+  orgId         String
+  title         String
+  documentId    String?
+  document      Document? @relation(fields: [documentId], references: [id])
+  publishedAt   DateTime  @default(now())
+
+  acknowledgments PolicyAcknowledgment[]
+
+  @@index([orgId])
+}
+
+model PolicyAcknowledgment {
+  id             String   @id @default(cuid())
+  orgId          String
+  policyId       String
+  policy         Policy   @relation(fields: [policyId], references: [id])
+  employeeId     String
+  employee       Employee @relation(fields: [employeeId], references: [id])
+  acknowledgedAt DateTime @default(now())
+
+  @@unique([policyId, employeeId])
+}
+
+// ============================================================================
+// 009-resignation-exit
+// ============================================================================
+
+enum ResignationStatus {
+  PENDING
+  SERVING_NOTICE
+  WITHDRAWN
+  COMPLETED
+}
+
+enum ExitTaskOwnerRole {
+  IT
+  FINANCE
+  HR
+}
+
+model Resignation {
+  id                  String            @id @default(cuid())
+  orgId               String
+  employeeId          String
+  employee            Employee          @relation(fields: [employeeId], references: [id])
+  proposedLastDay     DateTime          @db.Date
+  confirmedLastDay    DateTime?         @db.Date
+  status              ResignationStatus @default(PENDING)
+  exitInterviewNotes  String?
+  createdAt           DateTime          @default(now())
+
+  exitChecklist ExitChecklist?
+
+  @@index([orgId, employeeId, status])
+}
+
+model ExitChecklist {
+  id            String      @id @default(cuid())
+  orgId         String
+  resignationId String      @unique
+  resignation   Resignation @relation(fields: [resignationId], references: [id])
+  createdAt     DateTime    @default(now())
+  tasks         ExitTask[]
+
+  @@index([orgId])
+}
+
+model ExitTask {
+  id            String                @id @default(cuid())
+  orgId         String
+  checklistId   String
+  checklist     ExitChecklist         @relation(fields: [checklistId], references: [id])
+  ownerRole     ExitTaskOwnerRole
+  description   String
+  status        TaskCompletionStatus  @default(INCOMPLETE)
+  completedById String?
+  completedBy   Employee?             @relation(fields: [completedById], references: [id])
+  completedAt   DateTime?
+
+  @@index([checklistId, status])
+}
+
+// ============================================================================
+// 010-statutory-payroll-tax
+// ============================================================================
+
+enum StatutoryRuleType {
+  FLAT
+  PERCENTAGE
+  BRACKET
+}
+
+// TODO(010): ruleConfig's JSON shape (e.g., { "percent": 12 } vs a bracket array of
+// { "upTo": number, "rate": number } tuples) is intentionally left to /speckit-plan —
+// the spec only requires the three rule *types*, not a wire format.
+model StatutoryComponent {
+  id            String            @id @default(cuid())
+  orgId         String
+  name          String
+  ruleType      StatutoryRuleType
+  ruleConfig    Json
+  // 026-global-multi-currency-payroll — null = applies regardless of employee country
+  country       String?
+  effectiveFrom DateTime          @db.Date
+
+  exemptions StatutoryExemption[]
+
+  @@index([orgId, country])
+}
+
+model StatutoryExemption {
+  id                   String              @id @default(cuid())
+  orgId                String
+  employeeId           String
+  employee             Employee            @relation(fields: [employeeId], references: [id])
+  statutoryComponentId String
+  statutoryComponent   StatutoryComponent  @relation(fields: [statutoryComponentId], references: [id])
+
+  @@unique([employeeId, statutoryComponentId])
+}
+
+// The exported artifact from "generate a compliance report" (FR-006/FR-007) — totals are a
+// snapshot at generation time, not recomputed live, so a re-run's new report is a new row.
+model ComplianceReport {
+  id          String   @id @default(cuid())
+  orgId       String
+  periodMonth Int
+  periodYear  Int
+  totals      Json
+  fileUrl     String?
+  generatedAt DateTime @default(now())
+
+  @@index([orgId, periodYear, periodMonth])
+}
+
+// ============================================================================
+// 011-hr-analytics-reporting
+// ============================================================================
+// No new models — pure aggregation over Employee, Attendance, LeaveRequest, and Payslip.
+// See docs/feature.md § 011 for the read-only queries this feature computes.
+
+// ============================================================================
+// 012-performance-management
+// ============================================================================
+
+enum GoalStatus {
+  PENDING_APPROVAL
+  ACTIVE
+  CHANGES_REQUESTED
+  COMPLETED
+}
+
+enum ReviewScopeType {
+  COMPANY
+  DEPARTMENT
+}
+
+enum ReviewStatus {
+  IN_PROGRESS
+  FINAL
+}
+
+model Goal {
+  id          String     @id @default(cuid())
+  orgId       String
+  employeeId  String
+  employee    Employee   @relation(fields: [employeeId], references: [id])
+  description String
+  targetDate  DateTime   @db.Date
+  status      GoalStatus @default(PENDING_APPROVAL)
+  progress    String?
+  createdAt   DateTime   @default(now())
+
+  @@index([orgId, employeeId, status])
+}
+
+model ReviewCycle {
+  id           String          @id @default(cuid())
+  orgId        String
+  name         String
+  startDate    DateTime        @db.Date
+  endDate      DateTime        @db.Date
+  scopeType    ReviewScopeType @default(COMPANY)
+  departmentId String?
+  department   Department?     @relation(fields: [departmentId], references: [id])
+
+  reviews Review[]
+
+  @@index([orgId, endDate])
+}
+
+model Review {
+  id               String       @id @default(cuid())
+  orgId            String
+  employeeId       String
+  employee         Employee     @relation("ReviewEmployee", fields: [employeeId], references: [id])
+  reviewCycleId    String
+  reviewCycle      ReviewCycle  @relation(fields: [reviewCycleId], references: [id])
+  managerId        String
+  manager          Employee     @relation("ReviewManager", fields: [managerId], references: [id])
+  rating           String?
+  managerComments  String?
+  employeeComments String?
+  status           ReviewStatus @default(IN_PROGRESS)
+  finalizedAt      DateTime?
+
+  @@unique([employeeId, reviewCycleId])
+  @@index([orgId, reviewCycleId, status])
+}
+
+// ============================================================================
+// 013-sso-mfa
+// ============================================================================
+
+enum SsoProvider {
+  GOOGLE
+  MICROSOFT
+}
+
+model IdentityProviderConfig {
+  id       String      @id @default(cuid())
+  orgId    String      @unique
+  provider SsoProvider
+  enforced Boolean     @default(false)
+}
+
+model SsoIdentityLink {
+  id         String      @id @default(cuid())
+  orgId      String
+  userId     String
+  user       User        @relation(fields: [userId], references: [id])
+  provider   SsoProvider
+  externalId String
+
+  @@unique([provider, externalId])
+  @@index([orgId, userId])
+}
+
+model MfaEnrollment {
+  id         String   @id @default(cuid())
+  orgId      String
+  userId     String   @unique
+  user       User     @relation(fields: [userId], references: [id])
+  secret     String
+  enrolledAt DateTime @default(now())
+}
+
+// ============================================================================
+// 014-asset-expense-management
+// ============================================================================
+
+enum AssetStatus {
+  UNASSIGNED
+  ASSIGNED
+  LOST
+  DAMAGED
+}
+
+enum ExpenseStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  PAID
+}
+
+model Asset {
+  id          String      @id @default(cuid())
+  orgId       String
+  description String
+  identifier  String
+  status      AssetStatus @default(UNASSIGNED)
+
+  assignments AssetAssignment[]
+
+  @@unique([orgId, identifier])
+  @@index([orgId, status])
+}
+
+model AssetAssignment {
+  id         String    @id @default(cuid())
+  orgId      String
+  assetId    String
+  asset      Asset     @relation(fields: [assetId], references: [id])
+  employeeId String
+  employee   Employee  @relation(fields: [employeeId], references: [id])
+  assignedAt DateTime  @default(now())
+  returnedAt DateTime?
+
+  @@index([assetId])
+  @@index([employeeId])
+}
+
+model ExpenseClaim {
+  id               String        @id @default(cuid())
+  orgId            String
+  employeeId       String
+  employee         Employee      @relation("ExpenseClaimant", fields: [employeeId], references: [id])
+  amount           Float
+  category         String
+  receiptUrl       String?
+  status           ExpenseStatus @default(PENDING)
+  approverId       String?
+  approver         Employee?     @relation("ExpenseApprover", fields: [approverId], references: [id])
+  rejectionReason  String?
+  paidAt           DateTime?
+  createdAt        DateTime      @default(now())
+
+  @@index([orgId, status])
+}
+
+// ============================================================================
+// 015-multi-tenant-activation
+// ============================================================================
+
+enum OrganizationStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+// A lookup/directory table for orgId values, not a Prisma-relational parent of every other
+// model (see header note) — so activating this doesn't require touching 001-014's schema.
+model Organization {
+  id        String             @id @default(cuid())
+  name      String
+  status    OrganizationStatus @default(ACTIVE)
+  createdAt DateTime           @default(now())
+}
+
+// System-level operator, deliberately NOT an Employee/User of any organization (FR-005).
+model SuperAdmin {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+}
+
+// ============================================================================
+// 016-org-chart-visualization
+// ============================================================================
+// No new models — a read-only visualization over Employee's existing reporting-line data.
+// "Structural gap" (orphan/headless) flags are computed at query time, not stored.
+
+// ============================================================================
+// 017-hr-helpdesk-ticketing
+// ============================================================================
+
+enum TicketStatus {
+  OPEN
+  ASSIGNED
+  RESOLVED
+  REOPENED
+}
+
+model TicketCategory {
+  id    String @id @default(cuid())
+  orgId String
+  name  String
+
+  tickets Ticket[]
+
+  @@unique([orgId, name])
+}
+
+model Ticket {
+  id          String         @id @default(cuid())
+  orgId       String
+  employeeId  String
+  employee    Employee       @relation("TicketRequester", fields: [employeeId], references: [id])
+  categoryId  String
+  category    TicketCategory @relation(fields: [categoryId], references: [id])
+  description String
+  status      TicketStatus   @default(OPEN)
+  assigneeId  String?
+  assignee    Employee?      @relation("TicketAssignee", fields: [assigneeId], references: [id])
+  createdAt   DateTime       @default(now())
+
+  replies TicketReply[]
+
+  @@index([orgId, status])
+}
+
+model TicketReply {
+  id        String   @id @default(cuid())
+  orgId     String
+  ticketId  String
+  ticket    Ticket   @relation(fields: [ticketId], references: [id])
+  authorId  String
+  author    Employee @relation(fields: [authorId], references: [id])
+  message   String
+  createdAt DateTime @default(now())
+
+  @@index([ticketId])
+}
+
+// ============================================================================
+// 018-employee-engagement-surveys
+// ============================================================================
+//
+// ANONYMITY GUARANTEE (load-bearing, see checklists/018): SurveyParticipation exists ONLY to
+// gate duplicate submissions and compute response-rate denominators. It is NEVER joined to
+// SurveyResponse/SurveyAnswer in application code — SurveyResponse carries no employeeId at
+// all, by design. Do not add one during implementation.
+
+enum SurveyStatus {
+  OPEN
+  CLOSED
+}
+
+enum SurveyAudienceType {
+  COMPANY
+  DEPARTMENT
+}
+
+enum SurveyQuestionType {
+  ENPS
+  TEXT
+}
+
+model Survey {
+  id           String             @id @default(cuid())
+  orgId        String
+  title        String
+  status       SurveyStatus       @default(OPEN)
+  audienceType SurveyAudienceType
+  departmentId String?
+  department   Department?        @relation(fields: [departmentId], references: [id])
+  sentAt       DateTime?
+
+  questions     SurveyQuestion[]
+  participation SurveyParticipation[]
+  responses     SurveyResponse[]
+
+  @@index([orgId, status])
+}
+
+model SurveyQuestion {
+  id     String             @id @default(cuid())
+  orgId  String
+  surveyId String
+  survey Survey             @relation(fields: [surveyId], references: [id])
+  type   SurveyQuestionType
+  prompt String
+  order  Int
+
+  answers SurveyAnswer[]
+
+  @@index([surveyId, order])
+}
+
+// Duplicate-prevention + response-rate denominator ONLY — see anonymity note above.
+model SurveyParticipation {
+  id          String   @id @default(cuid())
+  orgId       String
+  surveyId    String
+  survey      Survey   @relation(fields: [surveyId], references: [id])
+  employeeId  String
+  respondedAt DateTime @default(now())
+
+  @@unique([surveyId, employeeId])
+}
+
+// Deliberately carries no employeeId / userId — see anonymity note above.
+model SurveyResponse {
+  id          String   @id @default(cuid())
+  orgId       String
+  surveyId    String
+  survey      Survey   @relation(fields: [surveyId], references: [id])
+  submittedAt DateTime @default(now())
+
+  answers SurveyAnswer[]
+
+  @@index([surveyId])
+}
+
+model SurveyAnswer {
+  id         String         @id @default(cuid())
+  responseId String
+  response   SurveyResponse @relation(fields: [responseId], references: [id])
+  questionId String
+  question   SurveyQuestion @relation(fields: [questionId], references: [id])
+  scoreValue Int?
+  textValue  String?
+
+  @@index([responseId])
+}
+
+// ============================================================================
+// 019-mobile-pwa
+// ============================================================================
+
+model DeviceRegistration {
+  id           String   @id @default(cuid())
+  orgId        String
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
+  pushToken    String
+  platform     String
+  registeredAt DateTime @default(now())
+
+  @@index([orgId, userId])
+}
+
+// ============================================================================
+// 020-public-careers-portal
+// ============================================================================
+// No new models — reuses JobPosting/Candidate/Application (see Application.source below,
+// shared with 021-referral-program).
+
+enum ApplicationSource {
+  INTERNAL
+  PUBLIC
+  REFERRAL
+}
+
+// ============================================================================
+// 021-referral-program
+// ============================================================================
+
+enum ReferralStatus {
+  PENDING
+  PAYABLE
+  PAID
+  FORFEITED
+  CLOSED_NO_BONUS
+}
+
+model ReferralProgramConfig {
+  id             String   @id @default(cuid())
+  orgId          String   @unique
+  bonusAmount    Float
+  qualifyingDays Int
+  effectiveFrom  DateTime @default(now())
+}
+
+model Referral {
+  id                  String         @id @default(cuid())
+  orgId               String
+  referrerEmployeeId  String
+  referrerEmployee    Employee       @relation(fields: [referrerEmployeeId], references: [id])
+  applicationId       String         @unique
+  application         Application    @relation(fields: [applicationId], references: [id])
+  bonusAmount         Float
+  qualifyingDays      Int
+  status              ReferralStatus @default(PENDING)
+  hiredAt             DateTime?
+  qualifyingUntil     DateTime?
+  paidAt              DateTime?
+
+  @@index([orgId, status])
+}
+
+// ============================================================================
+// 022-background-verification
+// ============================================================================
+
+enum BackgroundCheckStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETE
+}
+
+enum BackgroundCheckOutcome {
+  CLEARED
+  FLAGGED
+}
+
+enum BackgroundCheckItemResult {
+  CLEARED
+  FLAGGED
+  UNABLE_TO_VERIFY
+}
+
+model BackgroundCheck {
+  id             String                   @id @default(cuid())
+  orgId          String
+  applicationId  String                   @unique
+  application    Application              @relation(fields: [applicationId], references: [id])
+  status         BackgroundCheckStatus    @default(PENDING)
+  overallOutcome BackgroundCheckOutcome?
+
+  items BackgroundCheckItem[]
+
+  @@index([orgId, status])
+}
+
+model BackgroundCheckItem {
+  id                String                    @id @default(cuid())
+  orgId             String
+  backgroundCheckId String
+  backgroundCheck   BackgroundCheck           @relation(fields: [backgroundCheckId], references: [id])
+  label             String
+  result            BackgroundCheckItemResult?
+  notes             String?
+
+  @@index([backgroundCheckId])
+}
+
+model HireOverride {
+  id             String      @id @default(cuid())
+  orgId          String
+  applicationId  String
+  application    Application @relation(fields: [applicationId], references: [id])
+  justification  String
+  overriddenById String
+  overriddenBy   Employee    @relation(fields: [overriddenById], references: [id])
+  createdAt      DateTime    @default(now())
+
+  @@index([applicationId])
+}
+
+// ============================================================================
+// 023-learning-development
+// ============================================================================
+
+enum CourseAssignmentStatus {
+  INCOMPLETE
+  COMPLETE
+  OVERDUE
+}
+
+model Course {
+  id                  String  @id @default(cuid())
+  orgId               String
+  title               String
+  description         String?
+  contentUrl          String?
+  requiresProof       Boolean @default(false)
+  isComplianceRequired Boolean @default(false)
+  archived            Boolean @default(false)
+
+  assignments CourseAssignment[]
+
+  @@index([orgId, isComplianceRequired])
+}
+
+model CourseAssignment {
+  id              String                 @id @default(cuid())
+  orgId           String
+  courseId        String
+  course          Course                 @relation(fields: [courseId], references: [id])
+  employeeId      String
+  employee        Employee               @relation(fields: [employeeId], references: [id])
+  dueDate         DateTime?              @db.Date
+  status          CourseAssignmentStatus @default(INCOMPLETE)
+  completedAt     DateTime?
+  proofDocumentId String?
+  proofDocument   Document?              @relation(fields: [proofDocumentId], references: [id])
+
+  @@index([orgId, courseId, status])
+  @@index([employeeId, status])
+}
+
+// ============================================================================
+// 024-succession-planning
+// ============================================================================
+
+enum ReadinessLevel {
+  READY_NOW
+  READY_1_2_YEARS
+  DEVELOPING
+}
+
+model SuccessionPlan {
+  id                String   @id @default(cuid())
+  orgId             String
+  positionEmployeeId String  @unique
+  positionEmployee  Employee @relation(fields: [positionEmployeeId], references: [id])
+  createdAt         DateTime @default(now())
+
+  candidates SuccessionCandidate[]
+
+  @@index([orgId])
+}
+
+model SuccessionCandidate {
+  id                  String         @id @default(cuid())
+  orgId               String
+  successionPlanId    String
+  successionPlan      SuccessionPlan @relation(fields: [successionPlanId], references: [id])
+  candidateEmployeeId String
+  candidateEmployee   Employee       @relation(fields: [candidateEmployeeId], references: [id])
+  readinessLevel      ReadinessLevel
+  isValid             Boolean        @default(true)
+  updatedAt           DateTime       @updatedAt
+
+  @@index([successionPlanId])
+  @@index([candidateEmployeeId])
+}
+
+// ============================================================================
+// 025-white-labeling
+// ============================================================================
+
+model OrganizationBranding {
+  id           String  @id @default(cuid())
+  orgId        String  @unique
+  logoUrl      String?
+  primaryColor String?
+}
+
+// ============================================================================
+// 026-global-multi-currency-payroll
+// ============================================================================
+// Employee.payrollCountry/payrollCurrency, SalaryStructure.currency, Payslip.currency, and
+// StatutoryComponent.country are declared alongside their v0.1/v1.1 models above.
+
+model ExchangeRate {
+  id           String   @id @default(cuid())
+  orgId        String
+  fromCurrency String
+  toCurrency   String
+  rate         Float
+  periodMonth  Int
+  periodYear   Int
+
+  @@unique([orgId, fromCurrency, toCurrency, periodMonth, periodYear])
+}
+
+model ReportingCurrencyConfig {
+  id       String @id @default(cuid())
+  orgId    String @unique
+  currency String
+}
+
+// ============================================================================
+// 027-hr-assistant-chatbot
+// ============================================================================
+//
+// TODO(027): the spec requires the HR-facing topic overview to have "no individual employee's
+// identity attributable to a specific question" (FR-007). Rather than guess a retention/
+// redaction policy for it, this model deliberately stores only a derived topic label — not the
+// raw question/answer text, and not an employeeId — mirroring the 018 anonymity pattern. If
+// implementation needs the raw Q&A for debugging, that MUST go in a separate, access-restricted
+// log with its own retention policy, decided during /speckit-plan, not this table.
+model AssistantInteraction {
+  id            String   @id @default(cuid())
+  orgId         String
+  topic         String
+  wasAnswered   Boolean
+  groundingType String?
+  createdAt     DateTime @default(now())
+
+  @@index([orgId, createdAt])
+}
