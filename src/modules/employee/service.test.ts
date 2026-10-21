@@ -15,6 +15,8 @@ vi.mock("./repository.js", () => ({
   createDesignation: vi.fn(),
   writeActivityLog: vi.fn(),
   findOffboardActivityLog: vi.fn(),
+  departmentInOrg: vi.fn().mockResolvedValue(true),
+  designationInOrg: vi.fn().mockResolvedValue(true),
 }));
 
 vi.mock("../auth/service.js", () => ({

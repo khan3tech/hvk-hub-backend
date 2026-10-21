@@ -5,6 +5,7 @@ import { DomainError } from "../../middleware/errorHandler.js";
 
 vi.mock("./repository.js", () => ({
   findUserByEmail: vi.fn(),
+  findUsersByEmailAnyOrg: vi.fn(),
   findUserById: vi.fn(),
   incrementFailedAttempts: vi.fn(),
   resetFailedAttempts: vi.fn(),
@@ -42,14 +43,19 @@ function makeUser(overrides: Partial<Record<string, unknown>> = {}) {
 }
 
 describe("auth service — login", () => {
+  it("asks for the organization when an email exists in two orgs (015 FR-002)", async () => {
+    vi.mocked(repo.findUsersByEmailAnyOrg).mockResolvedValue([makeUser(), makeUser({ id: "user_2", orgId: "org_2" })] as never);
+    await expect(login({ email: "employee@example.com", password: "password123" })).rejects.toMatchObject({ code: "ORGANIZATION_REQUIRED" });
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
   it("rejects a nonexistent email with the generic invalid-credentials error", async () => {
-    vi.mocked(repo.findUserByEmail).mockResolvedValue(null);
+    vi.mocked(repo.findUsersByEmailAnyOrg).mockResolvedValue([]);
 
-    await expect(login(ORG_ID, { email: "nobody@example.com", password: "password123" })).rejects.toMatchObject({
+    await expect(login({ email: "nobody@example.com", password: "password123" })).rejects.toMatchObject({
       code: "INVALID_CREDENTIALS",
       status: 401,
     });
@@ -57,18 +63,18 @@ describe("auth service — login", () => {
 
   it("rejects a wrong password with the same generic error as a nonexistent email", async () => {
     const passwordHash = await bcrypt.hash("correct-password", 12);
-    vi.mocked(repo.findUserByEmail).mockResolvedValue(makeUser({ passwordHash }) as never);
+    vi.mocked(repo.findUsersByEmailAnyOrg).mockResolvedValue([makeUser({ passwordHash })] as never);
     vi.mocked(repo.incrementFailedAttempts).mockResolvedValue(makeUser({ failedLoginAttempts: 1 }) as never);
 
-    await expect(login(ORG_ID, { email: "employee@example.com", password: "wrong-password" })).rejects.toMatchObject(
+    await expect(login({ email: "employee@example.com", password: "wrong-password" })).rejects.toMatchObject(
       { code: "INVALID_CREDENTIALS", status: 401 },
     );
   });
 
   it("rejects sign-in for a locked account with a distinct ACCOUNT_LOCKED error", async () => {
-    vi.mocked(repo.findUserByEmail).mockResolvedValue(makeUser({ lockedAt: moment().toDate() }) as never);
+    vi.mocked(repo.findUsersByEmailAnyOrg).mockResolvedValue([makeUser({ lockedAt: moment().toDate() })] as never);
 
-    await expect(login(ORG_ID, { email: "employee@example.com", password: "irrelevant" })).rejects.toMatchObject({
+    await expect(login({ email: "employee@example.com", password: "irrelevant" })).rejects.toMatchObject({
       code: "ACCOUNT_LOCKED",
       status: 403,
     });
@@ -76,10 +82,10 @@ describe("auth service — login", () => {
 
   it("locks the account once failed attempts reach the threshold", async () => {
     const passwordHash = await bcrypt.hash("correct-password", 12);
-    vi.mocked(repo.findUserByEmail).mockResolvedValue(makeUser({ passwordHash }) as never);
+    vi.mocked(repo.findUsersByEmailAnyOrg).mockResolvedValue([makeUser({ passwordHash })] as never);
     vi.mocked(repo.incrementFailedAttempts).mockResolvedValue(makeUser({ failedLoginAttempts: 3 }) as never);
 
-    await expect(login(ORG_ID, { email: "employee@example.com", password: "wrong" })).rejects.toBeInstanceOf(
+    await expect(login({ email: "employee@example.com", password: "wrong" })).rejects.toBeInstanceOf(
       DomainError,
     );
     expect(repo.lockUser).toHaveBeenCalledWith("user_1");
@@ -87,10 +93,10 @@ describe("auth service — login", () => {
 
   it("succeeds with correct credentials, resets attempts, and issues a session", async () => {
     const passwordHash = await bcrypt.hash("correct-password", 12);
-    vi.mocked(repo.findUserByEmail).mockResolvedValue(makeUser({ passwordHash }) as never);
+    vi.mocked(repo.findUsersByEmailAnyOrg).mockResolvedValue([makeUser({ passwordHash })] as never);
     vi.mocked(repo.createRefreshToken).mockResolvedValue({} as never);
 
-    const result = (await login(ORG_ID, { email: "employee@example.com", password: "correct-password" })) as {
+    const result = (await login({ email: "employee@example.com", password: "correct-password" })) as {
       accessToken: string;
       user: { email: string };
     };
@@ -105,22 +111,22 @@ describe("auth service — login", () => {
 
   it("revokes any previously active session on a new successful sign-in (FR-013)", async () => {
     const passwordHash = await bcrypt.hash("correct-password", 12);
-    vi.mocked(repo.findUserByEmail).mockResolvedValue(makeUser({ passwordHash }) as never);
+    vi.mocked(repo.findUsersByEmailAnyOrg).mockResolvedValue([makeUser({ passwordHash })] as never);
     vi.mocked(repo.createRefreshToken).mockResolvedValue({} as never);
 
-    await login(ORG_ID, { email: "employee@example.com", password: "correct-password" });
+    await login({ email: "employee@example.com", password: "correct-password" });
 
     expect(repo.revokeAllRefreshTokensForUser).toHaveBeenCalledWith("user_1");
   });
 
   it("rejects sign-in for an offboarded employee's user account", async () => {
     const passwordHash = await bcrypt.hash("correct-password", 12);
-    vi.mocked(repo.findUserByEmail).mockResolvedValue(
-      makeUser({ passwordHash, employee: { status: "OFFBOARDED" } }) as never,
-    );
+    vi.mocked(repo.findUsersByEmailAnyOrg).mockResolvedValue([
+      makeUser({ passwordHash, employee: { status: "OFFBOARDED" } }),
+    ] as never);
 
     await expect(
-      login(ORG_ID, { email: "employee@example.com", password: "correct-password" }),
+      login({ email: "employee@example.com", password: "correct-password" }),
     ).rejects.toMatchObject({ code: "INVALID_CREDENTIALS", status: 401 });
   });
 });

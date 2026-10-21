@@ -103,6 +103,16 @@ async function decorate<T extends { id: string }>(orgId: string, employees: T[])
   return employees.map((e) => ({ ...e, ...extras.get(e.id) }));
 }
 
+// 015 FR-003/FR-004: never link an employee to another organization's department/designation.
+async function assertLookupsInOrg(orgId: string, input: { departmentId?: string | null; designationId?: string | null }) {
+  if (input.departmentId && !(await repo.departmentInOrg(orgId, input.departmentId))) {
+    throw new DomainError("VALIDATION_ERROR", "Department not found.", 400, { departmentId: ["Unknown department."] });
+  }
+  if (input.designationId && !(await repo.designationInOrg(orgId, input.designationId))) {
+    throw new DomainError("VALIDATION_ERROR", "Designation not found.", 400, { designationId: ["Unknown designation."] });
+  }
+}
+
 export async function createEmployee(
   orgId: string,
   input: CreateEmployeeRequest & { role?: string },
@@ -116,6 +126,7 @@ export async function createEmployee(
   if (input.managerId) {
     await validateManagerAssignment(orgId, null, input.managerId);
   }
+  await assertLookupsInOrg(orgId, input);
 
   const employeeCode = await generateEmployeeCode(orgId);
   const temporaryPassword = generateTemporaryPassword();
@@ -243,6 +254,7 @@ export async function updateEmployee(
   if (input.managerId) {
     await validateManagerAssignment(orgId, id, input.managerId);
   }
+  await assertLookupsInOrg(orgId, input);
 
   const before = {
     departmentId: existing.departmentId,
@@ -323,6 +335,11 @@ export async function listEmployeesForAnalytics(orgId: string) {
   const [employees, offboards] = await Promise.all([repo.listAllEmployees(orgId), repo.findOffboardDates(orgId)]);
   const offboardedAt = new Map(offboards.map((o) => [o.entityId, o.createdAt])); // latest wins (asc order)
   return employees.map((e) => ({ ...e, offboardedAt: e.status === "OFFBOARDED" ? offboardedAt.get(e.id) ?? null : null }));
+}
+
+// 015 FR-008: usage figure for the platform tier (a count, never records).
+export async function countActiveEmployees(orgId: string) {
+  return (await repo.listEmployees(orgId, { status: "ACTIVE" })).length;
 }
 
 export async function offboardEmployee(orgId: string, id: string, actor: AccessTokenPayload) {

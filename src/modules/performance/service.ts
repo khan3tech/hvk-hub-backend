@@ -44,9 +44,11 @@ export async function createGoal(orgId: string, input: { description: string; ta
 
 // Self, their current manager (live reporting line, edge case), or HR/Admin.
 async function assertCanSeeEmployee(orgId: string, employeeId: string, actor: AccessTokenPayload) {
-  if (isPrivileged(actor) || actor.employeeId === employeeId) return;
   const e = await getEmployeeSummary(orgId, employeeId);
-  if (e && actor.employeeId && e.managerId === actor.employeeId) return;
+  // 015 FR-003: an employee of another organization doesn't exist from here.
+  if (!e) throw new DomainError("NOT_FOUND", "Employee not found.", 404);
+  if (isPrivileged(actor) || actor.employeeId === employeeId) return;
+  if (actor.employeeId && e.managerId === actor.employeeId) return;
   throw new DomainError("FORBIDDEN", "You don't have access to this employee's performance records.", 403);
 }
 

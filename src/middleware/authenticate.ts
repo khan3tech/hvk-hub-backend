@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from "express";
 import moment from "moment";
 import { hashToken, verifyToken, type AccessTokenPayload } from "../lib/jwt.js";
 import { prisma } from "../lib/prisma.js";
+import { DEFAULT_ORG_ID } from "../lib/tenant.js";
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -53,7 +54,20 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
       sub: stored.user.id,
       role: stored.user.role as AccessTokenPayload["role"],
       employeeId: stored.user.employeeId,
+      orgId: stored.user.orgId,
     };
+  }
+
+  // 015 FR-007/SC-003: a suspended organization is cut off immediately, not when tokens expire.
+  const organization = await prisma.organization.findUnique({
+    where: { id: payload.orgId ?? DEFAULT_ORG_ID },
+    select: { status: true },
+  });
+  if (organization?.status === "SUSPENDED") {
+    res.status(403).json({
+      error: { code: "ORGANIZATION_SUSPENDED", message: "Your organization's access is suspended. Contact your administrator." },
+    });
+    return;
   }
 
   if (payload.employeeId) {

@@ -96,6 +96,7 @@ async function signInUser(
     sub: user.id,
     role: user.role as AccessTokenPayload["role"],
     employeeId: user.employeeId,
+    orgId,
   };
   const accessToken = signAccessToken(accessPayload, getSecret("JWT_ACCESS_SECRET"));
 
@@ -119,8 +120,46 @@ async function signInUser(
   };
 }
 
-export async function login(orgId: string, input: LoginRequest) {
-  const user = await repo.findUserByEmail(orgId, input.email);
+// 015: organizations live in their own module; auth asks through this directory (registered in
+// app.ts) so it never imports it. Without one (tests), every org counts as active.
+export interface OrganizationDirectory {
+  idForSlug(slug: string): Promise<string | null>;
+  isActive(orgId: string): Promise<boolean>;
+}
+let orgDirectory: OrganizationDirectory | null = null;
+
+export function setOrganizationDirectory(directory: OrganizationDirectory | null): void {
+  orgDirectory = directory;
+}
+
+export async function resolveOrganizationSlug(slug: string): Promise<string | null> {
+  return orgDirectory ? orgDirectory.idForSlug(slug) : slug;
+}
+
+async function assertOrgActive(orgId: string) {
+  if (orgDirectory && !(await orgDirectory.isActive(orgId))) {
+    throw new DomainError("ORGANIZATION_SUSPENDED", "Your organization's access is suspended. Contact your administrator.", 403);
+  }
+}
+
+// 015 FR-002: the org is found from the email (unique per org); an email present in several orgs
+// needs the organization slug to disambiguate.
+async function findLoginUser(input: LoginRequest) {
+  let candidates = await repo.findUsersByEmailAnyOrg(input.email);
+  if (input.organization) {
+    const orgId = await resolveOrganizationSlug(input.organization);
+    candidates = candidates.filter((u) => u.orgId === orgId);
+  }
+  if (candidates.length > 1) {
+    throw new DomainError("ORGANIZATION_REQUIRED", "This email is used in more than one organization. Choose your organization.", 400, {
+      organization: ["Required for this email."],
+    });
+  }
+  return candidates[0] ?? null;
+}
+
+export async function login(input: LoginRequest) {
+  const user = await findLoginUser(input);
 
   // Same generic message/code whether the email doesn't exist or the password is wrong
   // (spec FR-001, Edge Cases) — checked before the lock check so a wrong password against a
@@ -150,6 +189,9 @@ export async function login(orgId: string, input: LoginRequest) {
     throw new DomainError("INVALID_CREDENTIALS", "Invalid email or password.", 401);
   }
 
+  const orgId = user.orgId;
+  await assertOrgActive(orgId); // 015 FR-007
+
   const policy = loginPolicy
     ? await loginPolicy(orgId, { id: user.id, role: user.role, isBreakGlass: user.isBreakGlass, employeeId: user.employeeId })
     : { passwordAllowed: true, mfa: "NONE" as const };
@@ -165,13 +207,13 @@ export async function login(orgId: string, input: LoginRequest) {
 
   // 013 FR-008/FR-009: password OK, but no session until the second factor is done.
   if (policy.mfa !== "NONE") {
-    return { mfaRequired: true as const, enrollmentRequired: policy.mfa === "ENROLL", mfaToken: signMfaToken(user.id) };
+    return { mfaRequired: true as const, enrollmentRequired: policy.mfa === "ENROLL", mfaToken: signMfaToken(user.id, orgId) };
   }
 
   return signInUser(orgId, user, "password");
 }
 
-export async function refresh(orgId: string, rawRefreshToken: string) {
+export async function refresh(rawRefreshToken: string) {
   let payload: RefreshTokenPayload;
   try {
     payload = verifyToken<RefreshTokenPayload>(rawRefreshToken, getSecret("JWT_REFRESH_SECRET"));
@@ -184,6 +226,8 @@ export async function refresh(orgId: string, rawRefreshToken: string) {
   if (!stored || stored.userId !== payload.sub) {
     throw new DomainError("INVALID_SESSION", "Session expired. Please sign in again.", 401);
   }
+  const orgId = stored.user.orgId;
+  await assertOrgActive(orgId); // 015 FR-007: suspension also stops silent renewal
 
   if (stored.user.lockedAt) {
     throw new DomainError(
@@ -205,6 +249,7 @@ export async function refresh(orgId: string, rawRefreshToken: string) {
     sub: stored.userId,
     role: stored.user.role as AccessTokenPayload["role"],
     employeeId: stored.user.employeeId,
+    orgId,
   };
   const accessToken = signAccessToken(accessPayload, getSecret("JWT_ACCESS_SECRET"));
 

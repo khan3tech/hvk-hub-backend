@@ -112,34 +112,36 @@ export async function resetMfa(orgId: string, userId: string, actor: AccessToken
 
 // --- Second step of a password sign-in (mfaToken from POST /auth/login) ---
 
-async function userFromMfaToken(orgId: string, mfaToken: string) {
+async function userFromMfaToken(mfaToken: string) {
   let sub: string;
+  let orgId: string;
   try {
-    sub = verifyMfaToken(mfaToken).sub;
+    ({ sub, orgId } = verifyMfaToken(mfaToken));
   } catch {
     throw new DomainError("INVALID_SESSION", "Your sign-in attempt expired. Please sign in again.", 401);
   }
   const user = await getUserAuthState(orgId, sub);
   if (!user || !user.active) throw new DomainError("INVALID_SESSION", "Your sign-in attempt expired. Please sign in again.", 401);
   if (user.locked) throw new DomainError("ACCOUNT_LOCKED", "This account is locked. Contact an administrator to unlock it.", 403);
-  return user;
+  return { ...user, orgId };
 }
 
-export async function completeMfaSignIn(orgId: string, mfaToken: string, code: string) {
-  const user = await userFromMfaToken(orgId, mfaToken);
+// 015: the org comes from the signed challenge token, not the request.
+export async function completeMfaSignIn(mfaToken: string, code: string) {
+  const user = await userFromMfaToken(mfaToken);
   await verifySecondFactor(user.id, code);
-  return completeSignIn(orgId, user.id, "mfa");
+  return completeSignIn(user.orgId, user.id, "mfa");
 }
 
-export async function startEnrollmentFromChallenge(orgId: string, mfaToken: string) {
-  const user = await userFromMfaToken(orgId, mfaToken);
-  return startEnrollment(orgId, user.id, user.email);
+export async function startEnrollmentFromChallenge(mfaToken: string) {
+  const user = await userFromMfaToken(mfaToken);
+  return startEnrollment(user.orgId, user.id, user.email);
 }
 
-export async function confirmEnrollmentFromChallenge(orgId: string, mfaToken: string, code: string) {
-  const user = await userFromMfaToken(orgId, mfaToken);
-  await confirmEnrollment(orgId, user.id, code, { employeeId: user.employeeId });
-  return completeSignIn(orgId, user.id, "mfa");
+export async function confirmEnrollmentFromChallenge(mfaToken: string, code: string) {
+  const user = await userFromMfaToken(mfaToken);
+  await confirmEnrollment(user.orgId, user.id, code, { employeeId: user.employeeId });
+  return completeSignIn(user.orgId, user.id, "mfa");
 }
 
 // --- Settings & break-glass (US1.3, US2) ---
@@ -215,7 +217,7 @@ export async function startSso(orgId: string) {
   const nonce = randomBytes(16).toString("base64url");
   const { verifier, challenge } = pkcePair();
   const url = client.authorizationUrl({ state, nonce, codeChallenge: challenge, redirectUri: ssoRedirectUri() });
-  return { url, flow: { provider, state, nonce, codeVerifier: verifier } };
+  return { url, flow: { orgId, provider, state, nonce, codeVerifier: verifier } };
 }
 
 // FR-002/FR-003/SC-002 + the email-change edge case: match only by a verified email to an

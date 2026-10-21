@@ -8,6 +8,8 @@ export const RoleSchema = z.enum(ROLES);
 export const LoginRequestSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8),
+  // 015: organization slug — only needed when the email exists in more than one organization.
+  organization: z.string().trim().min(1).max(60).optional(),
 });
 export type LoginRequest = z.infer<typeof LoginRequestSchema>;
 

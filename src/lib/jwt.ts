@@ -7,6 +7,9 @@ export interface AccessTokenPayload {
   sub: string;
   role: Role;
   employeeId: string | null;
+  // 015: the tenant every request is scoped to. Always set on newly signed tokens; optional
+  // only so pre-015 tokens (≤15 min old at rollout) and test fixtures still type-check.
+  orgId?: string;
 }
 
 export interface RefreshTokenPayload {
@@ -49,6 +52,7 @@ export function randomTokenSalt(): string {
 export interface MfaTokenPayload {
   sub: string;
   purpose: "mfa";
+  orgId: string;
 }
 
 function mfaSecret(): string {
@@ -57,8 +61,8 @@ function mfaSecret(): string {
   return `${base}:mfa-challenge`;
 }
 
-export function signMfaToken(userId: string): string {
-  return jwt.sign({ sub: userId, purpose: "mfa" } satisfies MfaTokenPayload, mfaSecret(), { expiresIn: "5m" });
+export function signMfaToken(userId: string, orgId: string): string {
+  return jwt.sign({ sub: userId, purpose: "mfa", orgId } satisfies MfaTokenPayload, mfaSecret(), { expiresIn: "5m" });
 }
 
 export function verifyMfaToken(token: string): MfaTokenPayload {

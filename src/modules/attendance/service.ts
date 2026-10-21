@@ -189,6 +189,10 @@ export async function createLeaveRequest(
     );
   }
   const employeeId = input.employeeId ?? callerEmployeeId;
+  // 015 FR-003: HR filing on someone's behalf must name an employee of their own organization.
+  if (employeeId !== callerEmployeeId && !(await getEmployeeSummary(orgId, employeeId))) {
+    throw new DomainError("NOT_FOUND", "Employee not found.", 404);
+  }
 
   const startDate = startOfDay(input.startDate);
   const endDate = startOfDay(input.endDate);

@@ -15,6 +15,23 @@ const SEED_PASSWORD = "Password123!";
 async function main() {
   const passwordHash = await bcrypt.hash(SEED_PASSWORD, 12);
 
+  // 015: the seeded org is a real Organization row, and a platform operator exists for
+  // provisioning/suspending orgs. Override the operator with SUPER_ADMIN_EMAIL/PASSWORD.
+  await prisma.organization.upsert({
+    where: { id: ORG_ID },
+    update: {},
+    create: { id: ORG_ID, name: "Default organization", slug: ORG_ID },
+  });
+  const superAdminEmail = (process.env.SUPER_ADMIN_EMAIL ?? "platform@teamloom.dev").toLowerCase();
+  await prisma.superAdmin.upsert({
+    where: { email: superAdminEmail },
+    update: {},
+    create: {
+      email: superAdminEmail,
+      passwordHash: process.env.SUPER_ADMIN_PASSWORD ? await bcrypt.hash(process.env.SUPER_ADMIN_PASSWORD, 12) : passwordHash,
+    },
+  });
+
   const department = await prisma.department.upsert({
     where: { orgId_name: { orgId: ORG_ID, name: "Engineering" } },
     update: {},
@@ -161,6 +178,7 @@ async function main() {
   console.log("  hr@teamloom.dev       (HR)");
   console.log("  manager@teamloom.dev  (MANAGER)");
   console.log("  employee@teamloom.dev (EMPLOYEE, reports to manager@teamloom.dev)");
+  console.log(`Platform operator: ${superAdminEmail}`);
 }
 
 main()

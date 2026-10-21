@@ -79,6 +79,11 @@ export async function setSalaryStructure(
     });
   }
 
+  // 015 FR-003: only for an employee of the caller's own organization.
+  if (!(await getEmployeeSummary(orgId, employeeId))) {
+    throw new DomainError("NOT_FOUND", "Employee not found.", 404);
+  }
+
   const structure = await repo.createSalaryStructure({
     orgId,
     employeeId,

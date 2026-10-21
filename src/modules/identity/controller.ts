@@ -5,11 +5,12 @@ import { DomainError } from "../../middleware/errorHandler.js";
 import { logger } from "../../lib/logger.js";
 import type { AccessTokenPayload } from "../../lib/jwt.js";
 import { setSessionCookie } from "../auth/controller.js";
-import { getUserById } from "../auth/service.js";
+import { getUserById, resolveOrganizationSlug } from "../auth/service.js";
+import { DEFAULT_ORG_ID, orgOf } from "../../lib/tenant.js";
 import * as service from "./service.js";
 import type { Provider } from "./schema.js";
 
-const orgId = () => process.env.DEFAULT_ORG_ID ?? "default";
+const orgId = (req: Request) => orgOf(req);
 const actorOf = (req: Request) => req.user as AccessTokenPayload;
 
 // --- Second step of password sign-in (public; the mfaToken is the credential) ---
@@ -20,13 +21,13 @@ function sendSession(res: Response, session: { accessToken: string; refreshToken
 }
 
 export async function mfaVerify(req: Request, res: Response) {
-  sendSession(res, await service.completeMfaSignIn(orgId(), req.body.mfaToken, req.body.code));
+  sendSession(res, await service.completeMfaSignIn(req.body.mfaToken, req.body.code));
 }
 export async function mfaChallengeEnrollStart(req: Request, res: Response) {
-  res.json(await service.startEnrollmentFromChallenge(orgId(), req.body.mfaToken));
+  res.json(await service.startEnrollmentFromChallenge(req.body.mfaToken));
 }
 export async function mfaChallengeEnrollConfirm(req: Request, res: Response) {
-  sendSession(res, await service.confirmEnrollmentFromChallenge(orgId(), req.body.mfaToken, req.body.code));
+  sendSession(res, await service.confirmEnrollmentFromChallenge(req.body.mfaToken, req.body.code));
 }
 
 // --- SSO browser round-trip (public) ---
@@ -45,7 +46,11 @@ const flowSecret = () => `${process.env.JWT_ACCESS_SECRET ?? ""}:sso-flow`;
 const appUrl = () => (process.env.PUBLIC_APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
 
 export async function ssoStart(req: Request, res: Response) {
-  const { url, flow } = await service.startSso(orgId());
+  // 015: which organization's identity provider — ?organization=<slug> (default org if omitted).
+  const slug = typeof req.query.organization === "string" ? req.query.organization : null;
+  const ssoOrg = slug ? await resolveOrganizationSlug(slug) : DEFAULT_ORG_ID;
+  if (!ssoOrg) throw new DomainError("SSO_NOT_CONFIGURED", "Unknown organization.", 404);
+  const { url, flow } = await service.startSso(ssoOrg);
   res.cookie(FLOW_COOKIE, jwt.sign(flow, flowSecret(), { expiresIn: "10m" }), flowCookieOptions);
   if (req.query.redirect === "false") {
     res.json({ url });
@@ -59,13 +64,13 @@ export async function ssoCallback(req: Request, res: Response) {
   try {
     const raw = req.cookies?.[FLOW_COOKIE] as string | undefined;
     if (!raw) throw new DomainError("SSO_STATE_MISMATCH", "This sign-in link expired. Please try again.", 400);
-    let flow: { provider: Provider; state: string; nonce: string; codeVerifier: string };
+    let flow: { orgId: string; provider: Provider; state: string; nonce: string; codeVerifier: string };
     try {
       flow = jwt.verify(raw, flowSecret()) as typeof flow;
     } catch {
       throw new DomainError("SSO_STATE_MISMATCH", "This sign-in link expired. Please try again.", 400);
     }
-    const session = await service.finishSso(orgId(), flow, {
+    const session = await service.finishSso(flow.orgId, flow, {
       code: typeof req.query.code === "string" ? req.query.code : undefined,
       state: typeof req.query.state === "string" ? req.query.state : undefined,
     });
@@ -82,31 +87,31 @@ export async function ssoCallback(req: Request, res: Response) {
 // --- Authenticated self-service MFA ---
 
 export async function myMfa(req: Request, res: Response) {
-  res.json(await service.mfaStatus(orgId(), actorOf(req).sub));
+  res.json(await service.mfaStatus(orgId(req), actorOf(req).sub));
 }
 export async function myEnrollStart(req: Request, res: Response) {
-  const me = await getUserById(orgId(), actorOf(req).sub);
+  const me = await getUserById(orgId(req), actorOf(req).sub);
   if (!me) throw new DomainError("NOT_FOUND", "User not found.", 404);
-  res.json(await service.startEnrollment(orgId(), me.id, me.email));
+  res.json(await service.startEnrollment(orgId(req), me.id, me.email));
 }
 export async function myEnrollConfirm(req: Request, res: Response) {
   const actor = actorOf(req);
-  await service.confirmEnrollment(orgId(), actor.sub, req.body.code, actor);
-  res.json(await service.mfaStatus(orgId(), actor.sub));
+  await service.confirmEnrollment(orgId(req), actor.sub, req.body.code, actor);
+  res.json(await service.mfaStatus(orgId(req), actor.sub));
 }
 
 // --- HR/Admin ---
 
-export async function getSettings(_req: Request, res: Response) {
-  res.json(await service.getSettings(orgId()));
+export async function getSettings(req: Request, res: Response) {
+  res.json(await service.getSettings(orgId(req)));
 }
 export async function updateSettings(req: Request, res: Response) {
-  res.json(await service.updateSettings(orgId(), req.body, actorOf(req)));
+  res.json(await service.updateSettings(orgId(req), req.body, actorOf(req)));
 }
 export async function setBreakGlass(req: Request, res: Response) {
-  res.json(await service.setBreakGlassAccount(orgId(), req.params.userId ?? "", req.body.enabled, actorOf(req)));
+  res.json(await service.setBreakGlassAccount(orgId(req), req.params.userId ?? "", req.body.enabled, actorOf(req)));
 }
 export async function resetMfa(req: Request, res: Response) {
-  await service.resetMfa(orgId(), req.params.userId ?? "", actorOf(req));
+  await service.resetMfa(orgId(req), req.params.userId ?? "", actorOf(req));
   res.status(204).send();
 }

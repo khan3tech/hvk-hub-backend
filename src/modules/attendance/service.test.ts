@@ -32,7 +32,7 @@ vi.mock("./repository.js", () => ({
 vi.mock("../employee/service.js", () => ({
   getTeamView: vi.fn(),
   getEmployee: vi.fn(),
-  getEmployeeSummary: vi.fn(),
+  getEmployeeSummary: vi.fn().mockResolvedValue({ id: "emp_x", status: "ACTIVE", managerId: null }),
 }));
 
 vi.mock("../notifications/service.js", () => ({

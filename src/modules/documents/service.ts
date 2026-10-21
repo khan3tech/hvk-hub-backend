@@ -40,8 +40,10 @@ function publicDocument(doc: Doc) {
 // --- Access (FR-002, FR-003, SC-005) ---
 
 async function canReadEmployeeDocs(orgId: string, employeeId: string, actor: AccessTokenPayload) {
-  if (isPrivileged(actor) || actor.employeeId === employeeId) return { all: true };
   const owner = await getEmployeeSummary(orgId, employeeId);
+  // 015 FR-003: an employee of another organization doesn't exist from here.
+  if (!owner) throw new DomainError("NOT_FOUND", "Employee not found.", 404);
+  if (isPrivileged(actor) || actor.employeeId === employeeId) return { all: true };
   if (owner && actor.role === "MANAGER" && owner.managerId === actor.employeeId) {
     return { all: false }; // manager-visible documents only
   }

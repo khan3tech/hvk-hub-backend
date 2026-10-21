@@ -991,6 +991,9 @@ model Organization {
   name      String
   status    OrganizationStatus @default(ACTIVE)
   createdAt DateTime           @default(now())
+  // 015: human-friendly unique handle used at sign-in when an email exists in several orgs
+  slug        String           @unique
+  suspendedAt DateTime?
 }
 
 // System-level operator, deliberately NOT an Employee/User of any organization (FR-005).
@@ -999,6 +1002,9 @@ model SuperAdmin {
   email        String   @unique
   passwordHash String
   createdAt    DateTime @default(now())
+  // 015: same lockout model as org users (001 FR-011)
+  failedLoginAttempts Int       @default(0)
+  lockedAt            DateTime?
 }
 
 // ============================================================================

@@ -31,7 +31,9 @@ import { analyticsRouter } from "./modules/analytics/routes.js";
 import { performanceRouter } from "./modules/performance/routes.js";
 import { identityAuthRouter, identityRouter } from "./modules/identity/routes.js";
 import { loginPolicy } from "./modules/identity/service.js";
-import { setLoginPolicy } from "./modules/auth/service.js";
+import { setLoginPolicy, setOrganizationDirectory } from "./modules/auth/service.js";
+import { platformRouter } from "./modules/organizations/routes.js";
+import { organizationDirectory } from "./modules/organizations/service.js";
 import { assetsRouter } from "./modules/assets/routes.js";
 import * as assets from "./modules/assets/service.js";
 import { expensesRouter } from "./modules/expenses/routes.js";
@@ -47,6 +49,7 @@ registerEmployeeDecorator("assets", assets.assetsDecorator); // 014 FR-004
 exit.registerExitTaskGuard("ASSET_RETURN", assets.assetReturnGuard); // 014 US2.3
 setStatutoryCalculator(calculateStatutory); // 010 FR-004
 setLoginPolicy(loginPolicy); // 013 SSO enforcement + MFA
+setOrganizationDirectory(organizationDirectory); // 015 org slugs + suspension
 registerJob("exit-due-prompts", 60 * 60 * 1000, async () => {
   await exit.promptExitsDue(); // 009 US2.3
 });
@@ -98,6 +101,7 @@ export function createApp() {
   app.use("/api/identity", identityRouter);
   app.use("/api/assets", assetsRouter);
   app.use("/api/expenses", expensesRouter);
+  app.use("/api/platform", platformRouter); // 015 super-admin tier
 
   if (process.env.NODE_ENV !== "production") {
     const openApiDocument = generateOpenApiDocument();

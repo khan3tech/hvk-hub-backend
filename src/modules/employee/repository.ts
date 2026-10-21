@@ -94,3 +94,12 @@ export function findOffboardDates(orgId: string) {
     orderBy: { createdAt: "asc" },
   });
 }
+
+// 015 FR-003: lookups referenced by id must belong to the caller's organization.
+export function departmentInOrg(orgId: string, id: string) {
+  return prisma.department.count({ where: { id, orgId } }).then((n) => n > 0);
+}
+
+export function designationInOrg(orgId: string, id: string) {
+  return prisma.designation.count({ where: { id, orgId } }).then((n) => n > 0);
+}

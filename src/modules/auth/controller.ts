@@ -4,6 +4,7 @@
 import type { Request, Response } from "express";
 import { DomainError } from "../../middleware/errorHandler.js";
 import * as authService from "./service.js";
+import { orgOf } from "../../lib/tenant.js";
 import type { AccessTokenPayload } from "../../lib/jwt.js";
 
 const REFRESH_COOKIE = "refreshToken";
@@ -29,10 +30,8 @@ export function setSessionCookie(res: Response, refreshToken: string): void {
 }
 
 export async function login(req: Request, res: Response): Promise<void> {
-  // TODO(015-multi-tenant-activation): orgId is hardcoded to the single v0.1 org until
-  // multi-tenant activation resolves how it's derived per request (constitution Principle VI).
-  const orgId = process.env.DEFAULT_ORG_ID ?? "default";
-  const result = await authService.login(orgId, req.body);
+  // 015: the organization is resolved from the email (+ optional organization slug).
+  const result = await authService.login(req.body);
   if ("mfaRequired" in result) {
     // 013: second step pending — no session cookie yet.
     res.json(result);
@@ -44,13 +43,12 @@ export async function login(req: Request, res: Response): Promise<void> {
 }
 
 export async function refresh(req: Request, res: Response): Promise<void> {
-  const orgId = process.env.DEFAULT_ORG_ID ?? "default";
   const raw = req.cookies?.[REFRESH_COOKIE] as string | undefined;
   if (!raw) {
     throw new DomainError("INVALID_SESSION", "Session expired. Please sign in again.", 401);
   }
 
-  const result = await authService.refresh(orgId, raw);
+  const result = await authService.refresh(raw);
   res.cookie(REFRESH_COOKIE, result.refreshToken, REFRESH_COOKIE_OPTIONS);
   res.json({ accessToken: result.accessToken });
 }
@@ -63,7 +61,7 @@ export async function logout(req: Request, res: Response): Promise<void> {
 }
 
 export async function me(req: Request, res: Response): Promise<void> {
-  const orgId = process.env.DEFAULT_ORG_ID ?? "default";
+  const orgId = orgOf(req);
   const payload = req.user as AccessTokenPayload;
   const user = await authService.getUserById(orgId, payload.sub);
   if (!user) {
@@ -73,7 +71,7 @@ export async function me(req: Request, res: Response): Promise<void> {
 }
 
 export async function unlock(req: Request, res: Response): Promise<void> {
-  const orgId = process.env.DEFAULT_ORG_ID ?? "default";
+  const orgId = orgOf(req);
   const actor = req.user as AccessTokenPayload;
   const { userId } = req.params;
   if (!userId) {

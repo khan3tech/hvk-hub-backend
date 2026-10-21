@@ -120,3 +120,11 @@ export function findBreakGlassUsers(orgId: string) {
     select: { id: true, email: true, role: true, lockedAt: true, employee: { select: { status: true } } },
   });
 }
+
+// 015: a login email may exist in more than one organization.
+export function findUsersByEmailAnyOrg(email: string) {
+  return prisma.user.findMany({
+    where: { email: email.toLowerCase() },
+    include: { employee: { select: { status: true } } },
+  });
+}
