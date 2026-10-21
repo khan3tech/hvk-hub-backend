@@ -1030,6 +1030,8 @@ model TicketCategory {
   id    String @id @default(cuid())
   orgId String
   name  String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
 
   tickets Ticket[]
 
@@ -1048,6 +1050,12 @@ model Ticket {
   assigneeId  String?
   assignee    Employee?      @relation("TicketAssignee", fields: [assigneeId], references: [id])
   createdAt   DateTime       @default(now())
+  // 017: short subject, resolution time (FR-010), and the overdue clock (FR-009) — set on
+  // create/reopen/requester reply, cleared by an HR reply or resolution.
+  subject         String?
+  resolvedAt      DateTime?
+  awaitingHrSince DateTime?
+  updatedAt       DateTime   @default(now()) @updatedAt
 
   replies TicketReply[]
 
@@ -1063,8 +1071,17 @@ model TicketReply {
   author    Employee @relation(fields: [authorId], references: [id])
   message   String
   createdAt DateTime @default(now())
+  fromHr    Boolean  @default(false)
 
   @@index([ticketId])
+}
+
+// 017 FR-009: per-organization helpdesk configuration.
+model HelpdeskSettings {
+  id           String   @id @default(cuid())
+  orgId        String   @unique
+  overdueHours Int      @default(48)
+  updatedAt    DateTime @default(now()) @updatedAt
 }
 
 // ============================================================================
