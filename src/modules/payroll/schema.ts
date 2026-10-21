@@ -35,6 +35,11 @@ export const PayslipSchema = z.object({
   periodYear: z.number().int(),
   earnings: z.record(z.string(), z.number()),
   deductions: z.record(z.string(), z.number()),
+  // 010 FR-005: statutory lines, itemized apart from the non-statutory deductions above.
+  statutoryDeductions: z
+    .array(z.object({ groupId: z.string(), componentId: z.string(), name: z.string(), amount: z.number() }))
+    .nullable()
+    .optional(),
   netPay: z.number(),
   // Server-assigned at generation time, immutable thereafter (defaults to "INR" for v0.1).
   currency: z.string().nullable().optional(),

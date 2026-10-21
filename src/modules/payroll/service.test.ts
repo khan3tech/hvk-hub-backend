@@ -38,6 +38,7 @@ const {
   runPayroll,
   getMyPayslipById,
   getTeamPayslips,
+  setStatutoryCalculator,
 } = await import("./service.js");
 
 const ORG_ID = "org_1";
@@ -239,5 +240,30 @@ describe("payroll service — payslip access scoping (US3)", () => {
     await getTeamPayslips(ORG_ID, MANAGER_ACTOR, {});
 
     expect(repo.findPayslipsForEmployees).toHaveBeenCalledWith(ORG_ID, ["report_1"], {});
+  });
+});
+
+describe("payroll service — statutory deductions (010 FR-004/005/010)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(attendanceService.getUnpaidLeaveDaysForPeriod).mockResolvedValue(0);
+  });
+
+  it("stores statutory lines separately, subtracts them from net pay, and passes prorated pay", async () => {
+    vi.mocked(repo.findActiveEmployeesForPeriod).mockResolvedValue([
+      { id: EMPLOYEE_ID, dateOfJoining: moment.utc("2020-01-01").toDate(), status: "ACTIVE" },
+    ] as never);
+    vi.mocked(repo.findEffectiveSalaryStructure).mockResolvedValue(makeStructure() as never);
+    const calculator = vi.fn().mockResolvedValue([{ groupId: "g", componentId: "c", name: "Retirement fund", amount: 6000 }]);
+    setStatutoryCalculator(calculator);
+
+    await runPayroll(ORG_ID, { periodMonth: 9, periodYear: 2026 }, HR_ACTOR);
+    setStatutoryCalculator(null);
+
+    const data = vi.mocked(repo.upsertPayslip).mock.calls[0]![0].data;
+    expect(data.statutoryDeductions).toEqual([{ groupId: "g", componentId: "c", name: "Retirement fund", amount: 6000 }]);
+    expect(data.deductions).not.toHaveProperty("Retirement fund");
+    expect(data.netPay).toBe(54000); // 60000 gross - 6000 statutory
+    expect(calculator).toHaveBeenCalledWith(expect.objectContaining({ prorationRatio: 1, earnings: { basic: 50000, hra: 10000 } }));
   });
 });

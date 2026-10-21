@@ -26,12 +26,16 @@ import * as onboarding from "./modules/onboarding/service.js";
 import { exitRouter } from "./modules/exit/routes.js";
 import * as exit from "./modules/exit/service.js";
 import { registerJob } from "./lib/scheduler.js";
+import { statutoryRouter } from "./modules/statutory/routes.js";
+import { calculateStatutory } from "./modules/statutory/service.js";
+import { setStatutoryCalculator } from "./modules/payroll/service.js";
 
 // Cross-module extension points (Principle I): modules that build on Employee register here
 // rather than the employee module importing them.
 onEmployeeCreated(onboarding.onEmployeeCreated); // 007 FR-001
 registerEmployeeDecorator("onboarding", onboarding.statusesFor); // 007 FR-007
 registerEmployeeDecorator("exit", exit.exitStatusFor); // 009 FR-004
+setStatutoryCalculator(calculateStatutory); // 010 FR-004
 registerJob("exit-due-prompts", 60 * 60 * 1000, async () => {
   await exit.promptExitsDue(); // 009 US2.3
 });
@@ -76,6 +80,7 @@ export function createApp() {
   app.use("/api/policies", policiesRouter);
   app.use("/api/public/signatures", publicSignaturesRouter);
   app.use("/api/exit", exitRouter);
+  app.use("/api/statutory", statutoryRouter);
 
   if (process.env.NODE_ENV !== "production") {
     const openApiDocument = generateOpenApiDocument();

@@ -128,9 +128,33 @@ export async function getSalaryStructure(
 
 // --- Payroll run (User Story 2) ---
 
+// 010-statutory-payroll-tax plugs in here (registered in app.ts) so payroll never imports it.
+export interface StatutoryLine {
+  groupId: string;
+  componentId: string;
+  name: string;
+  amount: number;
+}
+export type StatutoryCalculator = (input: {
+  orgId: string;
+  employeeId: string;
+  periodStart: Date;
+  periodEnd: Date;
+  prorationRatio: number;
+  earnings: Record<string, number>; // already prorated
+  fullMonth: { basic: number; hra: number; gross: number }; // un-prorated monthly amounts
+}) => Promise<StatutoryLine[]>;
+
+let statutoryCalculator: StatutoryCalculator | null = null;
+
+export function setStatutoryCalculator(calculator: StatutoryCalculator | null): void {
+  statutoryCalculator = calculator;
+}
+
 interface PayslipComputation {
   earnings: Record<string, number>;
   deductions: Record<string, number>;
+  statutoryDeductions: StatutoryLine[];
   netPay: number;
 }
 
@@ -184,9 +208,24 @@ async function computePayslipForEmployee(
     : await getUnpaidLeaveDaysForPeriod(orgId, employee.id, activeStart, activeEnd);
   const deductions: Record<string, number> = { unpaidLeave: unpaidDays * dailyRate };
 
-  const totalDeductions = Object.values(deductions).reduce((sum, v) => sum + v, 0);
+  const fullMonthGross = structure.basic + structure.hra + Object.values(allowances).reduce((sum, v) => sum + v, 0);
+  const statutoryDeductions = statutoryCalculator
+    ? await statutoryCalculator({
+        orgId,
+        employeeId: employee.id,
+        periodStart,
+        periodEnd,
+        prorationRatio,
+        earnings,
+        fullMonth: { basic: structure.basic, hra: structure.hra, gross: fullMonthGross },
+      })
+    : [];
 
-  return { earnings, deductions, netPay: grossEarnings - totalDeductions };
+  const totalDeductions =
+    Object.values(deductions).reduce((sum, v) => sum + v, 0) +
+    statutoryDeductions.reduce((sum, line) => sum + line.amount, 0);
+
+  return { earnings, deductions, statutoryDeductions, netPay: grossEarnings - totalDeductions };
 }
 
 export async function runPayroll(
@@ -219,6 +258,7 @@ export async function runPayroll(
         periodYear: input.periodYear,
         earnings: result.earnings,
         deductions: result.deductions,
+        statutoryDeductions: result.statutoryDeductions as never,
         netPay: result.netPay,
         generatedAt: moment().toDate(),
         currency: DEFAULT_CURRENCY,

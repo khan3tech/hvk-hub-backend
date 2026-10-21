@@ -339,6 +339,9 @@ model Payslip {
   deductions  Json
   netPay      Float
   generatedAt DateTime @default(now())
+  // 010 FR-005: itemized statutory lines [{groupId, componentId, name, amount}], kept apart
+  // from non-statutory `deductions`; netPay already subtracts them.
+  statutoryDeductions Json?
 
   // 026-global-multi-currency-payroll — the currency netPay/earnings/deductions are expressed
   // in; immutable once generated even if the employee's currency assignment later changes
@@ -697,10 +700,17 @@ model StatutoryComponent {
   // 026-global-multi-currency-payroll — null = applies regardless of employee country
   country       String?
   effectiveFrom DateTime          @db.Date
+  // 010: rows are effective-dated versions of one component sharing groupId (FR-002);
+  // active=false discontinues the component from effectiveFrom.
+  groupId       String
+  active        Boolean           @default(true)
+  createdById   String?
+  createdAt     DateTime          @default(now())
 
   exemptions StatutoryExemption[]
 
   @@index([orgId, country])
+  @@index([orgId, groupId, effectiveFrom])
 }
 
 model StatutoryExemption {
@@ -710,8 +720,13 @@ model StatutoryExemption {
   employee             Employee            @relation(fields: [employeeId], references: [id])
   statutoryComponentId String
   statutoryComponent   StatutoryComponent  @relation(fields: [statutoryComponentId], references: [id])
+  // 010: exemptions apply to the component across all its versions
+  groupId              String
+  reason               String?
+  createdAt            DateTime            @default(now())
 
   @@unique([employeeId, statutoryComponentId])
+  @@unique([employeeId, groupId])
 }
 
 // The exported artifact from "generate a compliance report" (FR-006/FR-007) — totals are a
@@ -724,6 +739,7 @@ model ComplianceReport {
   totals      Json
   fileUrl     String?
   generatedAt DateTime @default(now())
+  generatedById String?
 
   @@index([orgId, periodYear, periodMonth])
 }
