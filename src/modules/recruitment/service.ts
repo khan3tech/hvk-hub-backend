@@ -4,6 +4,7 @@
 import { Prisma } from "@prisma/client";
 import { DomainError } from "../../middleware/errorHandler.js";
 import { getEmployeeSummary } from "../employee/service.js";
+import { notifyDepartmentManagers, notifyEmployees, notifyRoles } from "../notifications/service.js";
 import * as repo from "./repository.js";
 import type { AccessTokenPayload } from "../../lib/jwt.js";
 import type {
@@ -309,6 +310,19 @@ export async function moveApplicationStage(
 
 // --- Interview rounds (User Story 4) ---
 
+// 006 FR-004: the assigned interviewer is told the application, date and time (in-app + email).
+async function notifyInterviewer(orgId: string, round: { interviewerId: string; scheduledAt: Date; applicationId: string }) {
+  const detail = await repo.findApplicationDetail(orgId, round.applicationId);
+  const what = detail ? `${detail.candidate.name} for ${detail.jobPosting.title}` : "a candidate";
+  const message = `You're interviewing ${what} on ${round.scheduledAt.toISOString().replace("T", " ").slice(0, 16)} UTC.`;
+  await notifyEmployees(orgId, [round.interviewerId], {
+    type: "INTERVIEW_SCHEDULED",
+    message,
+    link: `/recruitment/applications/${round.applicationId}`,
+    email: { subject: "Interview scheduled", text: message },
+  });
+}
+
 export async function scheduleInterview(
   orgId: string,
   applicationId: string,
@@ -340,6 +354,7 @@ export async function scheduleInterview(
     entityId: round.id,
     after: { interviewerId: round.interviewerId, scheduledAt: round.scheduledAt },
   });
+  await notifyInterviewer(orgId, round);
   return round;
 }
 
@@ -367,6 +382,7 @@ export async function reassignInterview(
     before: { interviewerId: round.interviewerId },
     after: { interviewerId },
   });
+  await notifyInterviewer(orgId, updated);
   return updated;
 }
 
@@ -403,6 +419,15 @@ export async function recordInterviewResult(
     entityId: roundId,
     after: { result: input.result },
   });
+
+  // 006 FR-005: HR/Admin and the posting department's Manager(s), in-app only.
+  const event = {
+    type: "INTERVIEW_RESULT_RECORDED" as const,
+    message: `Interview result recorded: ${input.result} for "${round.application.jobPosting.title}".`,
+    link: `/recruitment/applications/${round.applicationId}`,
+  };
+  await notifyRoles(orgId, ["HR", "ADMIN"], event);
+  await notifyDepartmentManagers(orgId, round.application.jobPosting.departmentId, event);
   return updated;
 }
 

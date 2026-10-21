@@ -3,6 +3,7 @@
 // See specs/001-auth-rbac/spec.md → Key Entities for the data this module owns.
 import moment from "moment";
 import { prisma } from "../../lib/prisma.js";
+import type { Role } from "@prisma/client";
 
 export function findUserByEmail(orgId: string, email: string) {
   return prisma.user.findUnique({
@@ -94,5 +95,16 @@ export function writeActivityLog(params: {
       before: params.before as never,
       after: params.after as never,
     },
+  });
+}
+
+export function findUserByEmployeeId(orgId: string, employeeId: string) {
+  return prisma.user.findFirst({ where: { orgId, employeeId } });
+}
+
+export function findUsersByRoles(orgId: string, roles: Role[]) {
+  return prisma.user.findMany({
+    where: { orgId, role: { in: roles } },
+    select: { id: true, role: true, email: true, employeeId: true },
   });
 }

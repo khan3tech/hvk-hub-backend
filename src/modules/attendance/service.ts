@@ -3,7 +3,8 @@
 // Implements the functional requirements (FR-xxx) in specs/003-attendance-leave/spec.md.
 import moment from "moment";
 import { DomainError } from "../../middleware/errorHandler.js";
-import { getTeamView } from "../employee/service.js";
+import { getEmployeeSummary, getTeamView } from "../employee/service.js";
+import { notifyEmployees } from "../notifications/service.js";
 import * as repo from "./repository.js";
 import type { AccessTokenPayload } from "../../lib/jwt.js";
 import type { CreateLeaveRequest, RejectLeaveRequest } from "./schema.js";
@@ -237,6 +238,16 @@ export async function createLeaveRequest(
 
   const overlaps = await checkOverlap(orgId, employeeId, startDate, endDate);
 
+  // 006 FR-002: the requester's manager is prompted to review (in-app only).
+  const requester = await getEmployeeSummary(orgId, employeeId);
+  if (requester?.managerId) {
+    await notifyEmployees(orgId, [requester.managerId], {
+      type: "LEAVE_PENDING_APPROVAL",
+      message: `${requester.name} requested leave ${dateKey(startDate)} to ${dateKey(endDate)} (${days} day(s)).`,
+      link: `/leave/approvals/${request.id}`,
+    });
+  }
+
   return { ...request, overlaps };
 }
 
@@ -287,6 +298,27 @@ export async function getApprovalQueue(orgId: string, requester: AccessTokenPayl
   const reportIds = directReports.map((r) => r.id);
   if (reportIds.length === 0) return [];
   return repo.findPendingLeaveForEmployees(orgId, reportIds);
+}
+
+// 006 FR-001: the requester hears about the decision in-app and by email, with the dates and
+// (on rejection) the reason.
+async function notifyLeaveDecision(
+  orgId: string,
+  request: { id: string; employeeId: string; startDate: Date; endDate: Date },
+  decision: "APPROVED" | "REJECTED",
+  reason?: string,
+) {
+  const range = `${dateKey(request.startDate)} to ${dateKey(request.endDate)}`;
+  const message =
+    decision === "APPROVED"
+      ? `Your leave for ${range} was approved.`
+      : `Your leave for ${range} was rejected${reason ? `: ${reason}` : "."}`;
+  await notifyEmployees(orgId, [request.employeeId], {
+    type: "LEAVE_DECIDED",
+    message,
+    link: `/leave/requests/${request.id}`,
+    email: { subject: `Leave request ${decision.toLowerCase()}`, text: message },
+  });
 }
 
 async function decideLeaveRequest(
@@ -369,6 +401,7 @@ async function decideLeaveRequest(
       after: { status: "APPROVED", daysCharged: days },
     });
 
+    await notifyLeaveDecision(orgId, request, "APPROVED");
     return updated;
   }
 
@@ -388,6 +421,7 @@ async function decideLeaveRequest(
     after: { status: "REJECTED", reason },
   });
 
+  await notifyLeaveDecision(orgId, request, "REJECTED", reason);
   return updated;
 }
 

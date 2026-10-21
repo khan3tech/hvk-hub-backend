@@ -18,6 +18,7 @@ import {
 } from "./modules/attendance/routes.js";
 import { payrollRouter } from "./modules/payroll/routes.js";
 import { recruitmentRouter } from "./modules/recruitment/routes.js";
+import { notificationsRouter } from "./modules/notifications/routes.js";
 
 // Constitution: Development Workflow "API documentation" — each module's routes.ts registers
 // its endpoints on the shared OpenAPI registry (lib/openapi.ts) as part of implementing them,
@@ -53,6 +54,7 @@ export function createApp() {
   app.use("/api/holidays", holidayRouter);
   app.use("/api/payroll", payrollRouter);
   app.use("/api/recruitment", recruitmentRouter);
+  app.use("/api/notifications", notificationsRouter);
 
   if (process.env.NODE_ENV !== "production") {
     const openApiDocument = generateOpenApiDocument();

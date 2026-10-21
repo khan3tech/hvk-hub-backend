@@ -3,7 +3,8 @@
 // Implements the functional requirements (FR-xxx) in specs/004-payroll/spec.md.
 import moment from "moment";
 import { DomainError } from "../../middleware/errorHandler.js";
-import { getTeamView, getOffboardedDate } from "../employee/service.js";
+import { getTeamView, getOffboardedDate, getEmployeeSummary } from "../employee/service.js";
+import { notifyEmployees } from "../notifications/service.js";
 import { getUnpaidLeaveDaysForPeriod } from "../attendance/service.js";
 import * as repo from "./repository.js";
 import type { AccessTokenPayload } from "../../lib/jwt.js";
@@ -234,6 +235,23 @@ export async function runPayroll(
     entityId: `${input.periodYear}-${input.periodMonth}`,
     after: { periodMonth: input.periodMonth, periodYear: input.periodYear, payslipCount, skipped },
   });
+
+  // 006 FR-003: one summary to the HR/Admin who ran it (never one per payslip — Assumptions).
+  if (actor.employeeId) {
+    const names = await Promise.all(
+      skipped.map(async (s) => `${(await getEmployeeSummary(orgId, s.employeeId))?.name ?? s.employeeId} (${s.reason})`),
+    );
+    const period = `${input.periodYear}-${String(input.periodMonth).padStart(2, "0")}`;
+    const message =
+      `Payroll ${period} finished: ${payslipCount} payslip(s) generated` +
+      (names.length ? `; ${names.length} skipped: ${names.join(", ")}.` : ", none skipped.");
+    await notifyEmployees(orgId, [actor.employeeId], {
+      type: "PAYROLL_RUN_COMPLETED",
+      message,
+      link: `/payroll/runs/${period}`,
+      email: { subject: `Payroll ${period} completed`, text: message },
+    });
+  }
 
   return { periodMonth: input.periodMonth, periodYear: input.periodYear, payslipCount, skipped };
 }

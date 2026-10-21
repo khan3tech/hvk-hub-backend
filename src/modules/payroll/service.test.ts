@@ -16,6 +16,13 @@ vi.mock("./repository.js", () => ({
 vi.mock("../employee/service.js", () => ({
   getTeamView: vi.fn(),
   getOffboardedDate: vi.fn(),
+  getEmployeeSummary: vi.fn(),
+}));
+
+vi.mock("../notifications/service.js", () => ({
+  notifyEmployees: vi.fn(),
+  notifyRoles: vi.fn(),
+  notifyDepartmentManagers: vi.fn(),
 }));
 
 vi.mock("../attendance/service.js", () => ({

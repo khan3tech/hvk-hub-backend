@@ -15,6 +15,7 @@ import {
 } from "../../lib/jwt.js";
 import * as repo from "./repository.js";
 import type { LoginRequest } from "./schema.js";
+import type { Role } from "../../lib/roles.js";
 
 const BCRYPT_COST = 12;
 const LOCKOUT_THRESHOLD = Number(process.env.AUTH_LOCKOUT_THRESHOLD ?? 3);
@@ -206,4 +207,14 @@ export async function unlockUser(orgId: string, targetUserId: string, actor: Acc
   });
 
   return { id: updated.id, lockedAt: null as null };
+}
+
+// Read helpers for other modules (e.g. 006 notifications routing) — never exposed directly.
+export async function findUserForEmployee(orgId: string, employeeId: string) {
+  const user = await repo.findUserByEmployeeId(orgId, employeeId);
+  return user ? { id: user.id, role: user.role, email: user.email, employeeId: user.employeeId } : null;
+}
+
+export async function listUsersByRole(orgId: string, roles: Role[]) {
+  return repo.findUsersByRoles(orgId, roles);
 }

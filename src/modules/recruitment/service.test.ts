@@ -26,6 +26,12 @@ vi.mock("../employee/service.js", () => ({
   getEmployeeSummary: vi.fn(),
 }));
 
+vi.mock("../notifications/service.js", () => ({
+  notifyEmployees: vi.fn(),
+  notifyRoles: vi.fn(),
+  notifyDepartmentManagers: vi.fn(),
+}));
+
 const repo = await import("./repository.js");
 const employeeService = await import("../employee/service.js");
 const service = await import("./service.js");
@@ -203,6 +209,7 @@ describe("recruitment — interviews (US4)", () => {
     applicationId: "app_1",
     interviewerId: "emp_1",
     result: "PENDING",
+    application: { jobPosting: posting() },
     ...o,
   });
 

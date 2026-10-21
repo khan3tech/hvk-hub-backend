@@ -1,0 +1,33 @@
+import { z } from "zod";
+
+// Request/response validation for the notifications module (specs/006-notifications).
+export const NotificationTypeSchema = z.enum([
+  "LEAVE_DECIDED",
+  "LEAVE_PENDING_APPROVAL",
+  "PAYROLL_RUN_COMPLETED",
+  "INTERVIEW_SCHEDULED",
+  "INTERVIEW_RESULT_RECORDED",
+]);
+export type NotificationType = z.infer<typeof NotificationTypeSchema>;
+
+export const NotificationSchema = z.object({
+  id: z.string(),
+  type: z.string(),
+  message: z.string(),
+  link: z.string().nullable(),
+  read: z.boolean(),
+  createdAt: z.string().datetime(),
+});
+
+export const NotificationListQuerySchema = z.object({
+  unreadOnly: z.enum(["true", "false"]).optional(),
+  before: z.string().datetime().optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+});
+
+export const NotificationListResponseSchema = z.object({
+  items: z.array(NotificationSchema),
+  unreadCount: z.number().int(),
+});
+
+export const UnreadCountResponseSchema = z.object({ unreadCount: z.number().int() });

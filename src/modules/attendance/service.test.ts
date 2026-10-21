@@ -32,6 +32,13 @@ vi.mock("./repository.js", () => ({
 vi.mock("../employee/service.js", () => ({
   getTeamView: vi.fn(),
   getEmployee: vi.fn(),
+  getEmployeeSummary: vi.fn(),
+}));
+
+vi.mock("../notifications/service.js", () => ({
+  notifyEmployees: vi.fn(),
+  notifyRoles: vi.fn(),
+  notifyDepartmentManagers: vi.fn(),
 }));
 
 const repo = await import("./repository.js");
