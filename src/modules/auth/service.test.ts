@@ -90,7 +90,10 @@ describe("auth service — login", () => {
     vi.mocked(repo.findUserByEmail).mockResolvedValue(makeUser({ passwordHash }) as never);
     vi.mocked(repo.createRefreshToken).mockResolvedValue({} as never);
 
-    const result = await login(ORG_ID, { email: "employee@example.com", password: "correct-password" });
+    const result = (await login(ORG_ID, { email: "employee@example.com", password: "correct-password" })) as {
+      accessToken: string;
+      user: { email: string };
+    };
 
     expect(result.accessToken).toBeTruthy();
     expect(result.user.email).toBe("employee@example.com");

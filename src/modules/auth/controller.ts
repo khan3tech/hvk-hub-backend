@@ -23,13 +23,23 @@ const REFRESH_COOKIE_OPTIONS = {
   maxAge: 7 * 24 * 60 * 60 * 1000,
 };
 
+// Shared with 013's MFA and SSO completion endpoints.
+export function setSessionCookie(res: Response, refreshToken: string): void {
+  res.cookie(REFRESH_COOKIE, refreshToken, REFRESH_COOKIE_OPTIONS);
+}
+
 export async function login(req: Request, res: Response): Promise<void> {
   // TODO(015-multi-tenant-activation): orgId is hardcoded to the single v0.1 org until
   // multi-tenant activation resolves how it's derived per request (constitution Principle VI).
   const orgId = process.env.DEFAULT_ORG_ID ?? "default";
   const result = await authService.login(orgId, req.body);
+  if ("mfaRequired" in result) {
+    // 013: second step pending — no session cookie yet.
+    res.json(result);
+    return;
+  }
 
-  res.cookie(REFRESH_COOKIE, result.refreshToken, REFRESH_COOKIE_OPTIONS);
+  setSessionCookie(res, result.refreshToken);
   res.json({ accessToken: result.accessToken, user: result.user });
 }
 

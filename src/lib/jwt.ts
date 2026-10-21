@@ -43,3 +43,26 @@ export function hashToken(raw: string): string {
 export function randomTokenSalt(): string {
   return randomBytes(16).toString("hex");
 }
+
+// 013: a short-lived token proving "password OK, second factor pending". Signed with a key
+// derived from — but distinct from — the access secret, so it can never pass as an access token.
+export interface MfaTokenPayload {
+  sub: string;
+  purpose: "mfa";
+}
+
+function mfaSecret(): string {
+  const base = process.env.JWT_ACCESS_SECRET;
+  if (!base) throw new Error("JWT_ACCESS_SECRET is not configured");
+  return `${base}:mfa-challenge`;
+}
+
+export function signMfaToken(userId: string): string {
+  return jwt.sign({ sub: userId, purpose: "mfa" } satisfies MfaTokenPayload, mfaSecret(), { expiresIn: "5m" });
+}
+
+export function verifyMfaToken(token: string): MfaTokenPayload {
+  const payload = jwt.verify(token, mfaSecret()) as MfaTokenPayload;
+  if (payload.purpose !== "mfa") throw new Error("not an MFA token");
+  return payload;
+}

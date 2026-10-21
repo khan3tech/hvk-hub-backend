@@ -9,6 +9,7 @@ import {
   signAccessToken,
   signRefreshToken,
   verifyToken,
+  signMfaToken,
   REFRESH_TOKEN_TTL_MS,
   type AccessTokenPayload,
   type RefreshTokenPayload,
@@ -62,6 +63,62 @@ async function issueSession(orgId: string, userId: string) {
   return { refreshJwt, expiresAt };
 }
 
+// 013-sso-mfa decides, after a correct password, whether password sign-in is allowed (SSO
+// enforcement / break-glass) and whether a second factor is needed. Registered in app.ts.
+export type LoginPolicy = (
+  orgId: string,
+  user: { id: string; role: string; isBreakGlass: boolean; employeeId: string | null },
+) => Promise<{ passwordAllowed: boolean; mfa: "NONE" | "VERIFY" | "ENROLL" }>;
+let loginPolicy: LoginPolicy | null = null;
+
+export function setLoginPolicy(policy: LoginPolicy | null): void {
+  loginPolicy = policy;
+}
+
+// The single place a session is issued, for password, MFA-completed and SSO sign-ins alike.
+export async function completeSignIn(orgId: string, userId: string, method: "password" | "mfa" | "sso") {
+  const user = await repo.findUserById(orgId, userId);
+  if (!user) throw new DomainError("INVALID_CREDENTIALS", "Invalid email or password.", 401);
+  return signInUser(orgId, user, method);
+}
+
+async function signInUser(
+  orgId: string,
+  user: { id: string; email: string; role: string; employeeId: string | null },
+  method: "password" | "mfa" | "sso",
+) {
+  // FR-013 (spec Clarifications 2026-09-14): only one active session per user — a new
+  // sign-in ends any session already active on another device/browser.
+  await repo.revokeAllRefreshTokensForUser(user.id);
+  const { refreshJwt } = await issueSession(orgId, user.id);
+
+  const accessPayload: AccessTokenPayload = {
+    sub: user.id,
+    role: user.role as AccessTokenPayload["role"],
+    employeeId: user.employeeId,
+  };
+  const accessToken = signAccessToken(accessPayload, getSecret("JWT_ACCESS_SECRET"));
+
+  await logActivity({
+    orgId,
+    actorEmployeeId: user.employeeId,
+    action: "auth.sign_in",
+    entityId: user.id,
+    after: { at: moment().toISOString(), method },
+  });
+
+  return {
+    accessToken,
+    refreshToken: refreshJwt,
+    user: {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      employeeId: user.employeeId,
+    },
+  };
+}
+
 export async function login(orgId: string, input: LoginRequest) {
   const user = await repo.findUserByEmail(orgId, input.email);
 
@@ -93,37 +150,25 @@ export async function login(orgId: string, input: LoginRequest) {
     throw new DomainError("INVALID_CREDENTIALS", "Invalid email or password.", 401);
   }
 
+  const policy = loginPolicy
+    ? await loginPolicy(orgId, { id: user.id, role: user.role, isBreakGlass: user.isBreakGlass, employeeId: user.employeeId })
+    : { passwordAllowed: true, mfa: "NONE" as const };
+  if (!policy.passwordAllowed) {
+    throw new DomainError(
+      "SSO_REQUIRED",
+      "Your company signs in with single sign-on. Use the Google/Microsoft sign-in button instead.",
+      403,
+    );
+  }
+
   await repo.resetFailedAttempts(user.id);
-  // FR-013 (spec Clarifications 2026-09-14): only one active session per user — a new
-  // sign-in ends any session already active on another device/browser.
-  await repo.revokeAllRefreshTokensForUser(user.id);
-  const { refreshJwt } = await issueSession(orgId, user.id);
 
-  const accessPayload: AccessTokenPayload = {
-    sub: user.id,
-    role: user.role as AccessTokenPayload["role"],
-    employeeId: user.employeeId,
-  };
-  const accessToken = signAccessToken(accessPayload, getSecret("JWT_ACCESS_SECRET"));
+  // 013 FR-008/FR-009: password OK, but no session until the second factor is done.
+  if (policy.mfa !== "NONE") {
+    return { mfaRequired: true as const, enrollmentRequired: policy.mfa === "ENROLL", mfaToken: signMfaToken(user.id) };
+  }
 
-  await logActivity({
-    orgId,
-    actorEmployeeId: user.employeeId,
-    action: "auth.sign_in",
-    entityId: user.id,
-    after: { at: moment().toISOString() },
-  });
-
-  return {
-    accessToken,
-    refreshToken: refreshJwt,
-    user: {
-      id: user.id,
-      email: user.email,
-      role: user.role,
-      employeeId: user.employeeId,
-    },
-  };
+  return signInUser(orgId, user, "password");
 }
 
 export async function refresh(orgId: string, rawRefreshToken: string) {
@@ -217,4 +262,41 @@ export async function findUserForEmployee(orgId: string, employeeId: string) {
 
 export async function listUsersByRole(orgId: string, roles: Role[]) {
   return repo.findUsersByRoles(orgId, roles);
+}
+
+// --- Read/write helpers for 013-sso-mfa (identity module) — never exposed directly ---
+
+function authState(user: NonNullable<Awaited<ReturnType<typeof repo.findUserById>>>) {
+  return {
+    id: user.id,
+    email: user.email,
+    role: user.role,
+    employeeId: user.employeeId,
+    isBreakGlass: user.isBreakGlass,
+    locked: Boolean(user.lockedAt),
+    // An account without an employee record, or an offboarded one, can't sign in.
+    active: user.employee?.status === "ACTIVE",
+  };
+}
+
+export async function getUserAuthState(orgId: string, userId: string) {
+  const user = await repo.findUserById(orgId, userId);
+  return user ? authState(user) : null;
+}
+
+export async function getUserAuthStateByEmail(orgId: string, email: string) {
+  const user = await repo.findUserByEmail(orgId, email);
+  return user ? authState(user) : null;
+}
+
+export async function setBreakGlass(userId: string, isBreakGlass: boolean) {
+  await repo.setBreakGlass(userId, isBreakGlass);
+}
+
+// Break-glass accounts that could actually sign in right now (FR-005, SC-005).
+export async function listUsableBreakGlassAdmins(orgId: string) {
+  const users = await repo.findBreakGlassUsers(orgId);
+  return users
+    .filter((u) => u.role === "ADMIN" && !u.lockedAt && u.employee?.status === "ACTIVE")
+    .map((u) => ({ userId: u.id, email: u.email }));
 }

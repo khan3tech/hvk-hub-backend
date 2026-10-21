@@ -29,6 +29,9 @@ import { registerJob } from "./lib/scheduler.js";
 import { statutoryRouter } from "./modules/statutory/routes.js";
 import { analyticsRouter } from "./modules/analytics/routes.js";
 import { performanceRouter } from "./modules/performance/routes.js";
+import { identityAuthRouter, identityRouter } from "./modules/identity/routes.js";
+import { loginPolicy } from "./modules/identity/service.js";
+import { setLoginPolicy } from "./modules/auth/service.js";
 import { calculateStatutory } from "./modules/statutory/service.js";
 import { setStatutoryCalculator } from "./modules/payroll/service.js";
 
@@ -38,6 +41,7 @@ onEmployeeCreated(onboarding.onEmployeeCreated); // 007 FR-001
 registerEmployeeDecorator("onboarding", onboarding.statusesFor); // 007 FR-007
 registerEmployeeDecorator("exit", exit.exitStatusFor); // 009 FR-004
 setStatutoryCalculator(calculateStatutory); // 010 FR-004
+setLoginPolicy(loginPolicy); // 013 SSO enforcement + MFA
 registerJob("exit-due-prompts", 60 * 60 * 1000, async () => {
   await exit.promptExitsDue(); // 009 US2.3
 });
@@ -66,6 +70,7 @@ export function createApp() {
   });
 
   app.use("/api/auth", authRouter);
+  app.use("/api/auth", identityAuthRouter); // 013: MFA step + SSO round-trip
   app.use("/api/employees", employeeRouter);
   app.use("/api/departments", departmentRouter);
   app.use("/api/designations", designationRouter);
@@ -85,6 +90,7 @@ export function createApp() {
   app.use("/api/statutory", statutoryRouter);
   app.use("/api/analytics", analyticsRouter);
   app.use("/api/performance", performanceRouter);
+  app.use("/api/identity", identityRouter);
 
   if (process.env.NODE_ENV !== "production") {
     const openApiDocument = generateOpenApiDocument();

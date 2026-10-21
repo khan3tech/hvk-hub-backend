@@ -844,8 +844,13 @@ enum SsoProvider {
 model IdentityProviderConfig {
   id       String      @id @default(cuid())
   orgId    String      @unique
-  provider SsoProvider
+  // null = no SSO provider configured (settings row may exist just for mfaRequired)
+  provider SsoProvider?
   enforced Boolean     @default(false)
+  // 013 FR-009: every password account must have MFA
+  mfaRequired Boolean  @default(false)
+  updatedById String?
+  updatedAt   DateTime @default(now()) @updatedAt
 }
 
 model SsoIdentityLink {
@@ -855,6 +860,9 @@ model SsoIdentityLink {
   user       User        @relation(fields: [userId], references: [id])
   provider   SsoProvider
   externalId String
+  // the verified email at link time (edge case: a later mismatch fails clearly)
+  email      String?
+  createdAt  DateTime    @default(now())
 
   @@unique([provider, externalId])
   @@index([orgId, userId])
@@ -865,8 +873,15 @@ model MfaEnrollment {
   orgId      String
   userId     String   @unique
   user       User     @relation(fields: [userId], references: [id])
-  secret     String
+  // AES-256-GCM encrypted base32 TOTP secrets (lib/secretBox.ts); pendingSecret until confirmed
+  secret     String?
+  pendingSecret String?
+  confirmedAt   DateTime?
   enrolledAt DateTime @default(now())
+  // FR-011: consecutive failed codes -> temporary lock; lastUsedStep blocks code replay
+  failedAttempts Int      @default(0)
+  lockedUntil    DateTime?
+  lastUsedStep   Int?
 }
 
 // ============================================================================
