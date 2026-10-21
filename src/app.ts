@@ -17,10 +17,8 @@ import {
   holidayRouter,
 } from "./modules/attendance/routes.js";
 import { payrollRouter } from "./modules/payroll/routes.js";
+import { recruitmentRouter } from "./modules/recruitment/routes.js";
 
-// TODO: mount remaining module routers as each feature is implemented:
-// 005-recruitment-ats.
-//
 // Constitution: Development Workflow "API documentation" — each module's routes.ts registers
 // its endpoints on the shared OpenAPI registry (lib/openapi.ts) as part of implementing them,
 // tagged with that module's name (e.g. tags: ["Attendance & Leave"]) so the single /docs page
@@ -54,6 +52,7 @@ export function createApp() {
   app.use("/api/leave-types", leaveTypeRouter);
   app.use("/api/holidays", holidayRouter);
   app.use("/api/payroll", payrollRouter);
+  app.use("/api/recruitment", recruitmentRouter);
 
   if (process.env.NODE_ENV !== "production") {
     const openApiDocument = generateOpenApiDocument();

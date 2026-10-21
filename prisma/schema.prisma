@@ -365,7 +365,9 @@ model Candidate {
   orgId        String
   name         String
   email        String
+  phone        String?
   resumeUrl    String
+  createdAt    DateTime      @default(now())
   applications Application[]
 
   // 008-document-esignature
@@ -409,6 +411,8 @@ model InterviewRound {
   interviewer   Employee        @relation(fields: [interviewerId], references: [id])
   scheduledAt   DateTime
   result        InterviewResult @default(PENDING)
+  feedback      String?
+  recordedAt    DateTime?
 
   @@index([applicationId])
 }

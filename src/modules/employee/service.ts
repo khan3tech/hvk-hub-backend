@@ -234,6 +234,21 @@ export async function getOffboardedDate(orgId: string, employeeId: string): Prom
   return entry?.createdAt ?? null;
 }
 
+// Unscoped, minimal read for other modules' own authorization checks (e.g. 005's "Manager of the
+// posting's department"). Callers apply their own RBAC — never return this to a client as-is.
+export async function getEmployeeSummary(orgId: string, employeeId: string) {
+  const employee = await repo.findEmployeeById(orgId, employeeId);
+  if (!employee) return null;
+  return {
+    id: employee.id,
+    name: employee.name,
+    email: employee.email,
+    status: employee.status,
+    departmentId: employee.departmentId,
+    managerId: employee.managerId,
+  };
+}
+
 export async function offboardEmployee(orgId: string, id: string, actor: AccessTokenPayload) {
   const existing = await repo.findEmployeeById(orgId, id);
   if (!existing) {

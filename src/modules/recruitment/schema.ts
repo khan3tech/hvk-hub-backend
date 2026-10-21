@@ -12,10 +12,14 @@ export const CreateJobPostingRequestSchema = z.object({
 });
 export type CreateJobPostingRequest = z.infer<typeof CreateJobPostingRequestSchema>;
 
-export const UpdateJobPostingRequestSchema = z.object({
-  status: JobPostingStatusSchema.optional(),
-  openings: z.number().int().positive().optional(),
-});
+export const UpdateJobPostingRequestSchema = z
+  .object({
+    status: JobPostingStatusSchema.optional(),
+    openings: z.number().int().positive().optional(),
+  })
+  .refine((v) => v.status !== undefined || v.openings !== undefined, {
+    message: "Provide status and/or openings.",
+  });
 export type UpdateJobPostingRequest = z.infer<typeof UpdateJobPostingRequestSchema>;
 
 export const JobPostingSchema = z.object({
@@ -30,6 +34,8 @@ export type JobPosting = z.infer<typeof JobPostingSchema>;
 export const CreateCandidateRequestSchema = z.object({
   name: z.string().min(1),
   email: z.string().email(),
+  phone: z.string().min(5).max(30).optional(),
+  // v0.1: a link to the stored resume file (spec Assumptions — one file, no parsing).
   resumeUrl: z.string().url(),
 });
 export type CreateCandidateRequest = z.infer<typeof CreateCandidateRequestSchema>;
@@ -38,6 +44,7 @@ export const CandidateSchema = z.object({
   id: z.string(),
   name: z.string(),
   email: z.string().email(),
+  phone: z.string().nullable(),
   resumeUrl: z.string().url(),
 });
 export type Candidate = z.infer<typeof CandidateSchema>;
@@ -52,11 +59,18 @@ export const ApplicationStageSchema = z.enum([
 ]);
 export type ApplicationStage = z.infer<typeof ApplicationStageSchema>;
 
+export const CreateApplicationRequestSchema = z.object({
+  candidateId: z.string(),
+  jobPostingId: z.string(),
+});
+export type CreateApplicationRequest = z.infer<typeof CreateApplicationRequestSchema>;
+
 export const ApplicationSchema = z.object({
   id: z.string(),
   candidateId: z.string(),
   jobPostingId: z.string(),
   stage: ApplicationStageSchema,
+  isTerminal: z.boolean(),
 });
 export type Application = z.infer<typeof ApplicationSchema>;
 
@@ -74,11 +88,29 @@ export const ScheduleInterviewRequestSchema = z.object({
 });
 export type ScheduleInterviewRequest = z.infer<typeof ScheduleInterviewRequestSchema>;
 
+export const ReassignInterviewRequestSchema = z.object({
+  interviewerId: z.string(),
+});
+export type ReassignInterviewRequest = z.infer<typeof ReassignInterviewRequestSchema>;
+
+export const RecordInterviewResultRequestSchema = z.object({
+  result: z.enum(["PASS", "FAIL"]),
+  feedback: z.string().max(5000).optional(),
+});
+export type RecordInterviewResultRequest = z.infer<typeof RecordInterviewResultRequestSchema>;
+
 export const InterviewRoundSchema = z.object({
   id: z.string(),
   applicationId: z.string(),
   interviewerId: z.string(),
   scheduledAt: z.string().datetime(),
   result: InterviewResultSchema,
+  feedback: z.string().nullable(),
 });
 export type InterviewRound = z.infer<typeof InterviewRoundSchema>;
+
+export const ApplicationDetailSchema = ApplicationSchema.extend({
+  candidate: CandidateSchema,
+  jobPosting: JobPostingSchema,
+  interviewRounds: z.array(InterviewRoundSchema),
+});

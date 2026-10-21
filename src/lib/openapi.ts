@@ -33,3 +33,38 @@ export function generateOpenApiDocument() {
     servers: [{ url: "/api" }],
   });
 }
+
+// Shorthand for the registerPath() call every authenticated endpoint repeats. Paths use
+// OpenAPI's `{param}` syntax and are relative to the /api server prefix.
+export function documentRoute(def: {
+  method: "get" | "post" | "put" | "patch" | "delete";
+  path: string;
+  tag: string;
+  description: string;
+  params?: z.AnyZodObject;
+  query?: z.AnyZodObject;
+  body?: z.ZodTypeAny;
+  status?: number;
+  response?: z.ZodTypeAny;
+  auth?: boolean;
+}) {
+  const status = def.status ?? (def.method === "post" ? 201 : 200);
+  registry.registerPath({
+    method: def.method,
+    path: def.path,
+    tags: [def.tag],
+    description: def.description,
+    ...(def.auth === false ? {} : { security: [{ [bearerAuth.name]: [] }] }),
+    request: {
+      ...(def.params ? { params: def.params } : {}),
+      ...(def.query ? { query: def.query } : {}),
+      ...(def.body ? { body: { content: { "application/json": { schema: def.body } } } } : {}),
+    },
+    responses: {
+      [status]: {
+        description: "Success.",
+        ...(def.response ? { content: { "application/json": { schema: def.response } } } : {}),
+      },
+    },
+  });
+}

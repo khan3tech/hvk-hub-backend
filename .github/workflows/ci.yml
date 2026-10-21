@@ -63,6 +63,7 @@ jobs:
           done
           echo "API did not become healthy"; cat api.log; exit 1
       - run: node scripts/e2e-001-auth.mjs
+      - run: node scripts/e2e/run-all.mjs
       - name: API log on failure
         if: failure()
         run: tail -n 200 api.log || true
