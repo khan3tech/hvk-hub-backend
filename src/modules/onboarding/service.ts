@@ -273,8 +273,9 @@ export async function getOverview(orgId: string, now: Date = new Date()) {
   return entries.sort((a, b) => Number(b.stalled) - Number(a.stalled) || b.daysSinceJoining - a.daysSinceJoining);
 }
 
-// Registered with employee/service.setOnboardingStatusProvider() in app.ts (FR-007).
+// Registered with employee/service.registerEmployeeDecorator() in app.ts (FR-007).
 export async function statusesFor(orgId: string, employeeIds: string[]) {
   const checklists = await repo.listChecklistsWithTasks(orgId, employeeIds);
-  return new Map(checklists.map((c) => [c.employeeId, summarize(c.tasks).status as string]));
+  const status = new Map(checklists.map((c) => [c.employeeId, summarize(c.tasks).status as string]));
+  return new Map(employeeIds.map((id) => [id, { onboardingStatus: status.get(id) ?? "NONE" }]));
 }

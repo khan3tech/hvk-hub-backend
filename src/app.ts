@@ -21,13 +21,20 @@ import { recruitmentRouter } from "./modules/recruitment/routes.js";
 import { notificationsRouter } from "./modules/notifications/routes.js";
 import { onboardingRouter } from "./modules/onboarding/routes.js";
 import { documentsRouter, policiesRouter, publicSignaturesRouter } from "./modules/documents/routes.js";
-import { onEmployeeCreated, setOnboardingStatusProvider } from "./modules/employee/service.js";
+import { onEmployeeCreated, registerEmployeeDecorator } from "./modules/employee/service.js";
 import * as onboarding from "./modules/onboarding/service.js";
+import { exitRouter } from "./modules/exit/routes.js";
+import * as exit from "./modules/exit/service.js";
+import { registerJob } from "./lib/scheduler.js";
 
 // Cross-module extension points (Principle I): modules that build on Employee register here
 // rather than the employee module importing them.
 onEmployeeCreated(onboarding.onEmployeeCreated); // 007 FR-001
-setOnboardingStatusProvider(onboarding.statusesFor); // 007 FR-007
+registerEmployeeDecorator("onboarding", onboarding.statusesFor); // 007 FR-007
+registerEmployeeDecorator("exit", exit.exitStatusFor); // 009 FR-004
+registerJob("exit-due-prompts", 60 * 60 * 1000, async () => {
+  await exit.promptExitsDue(); // 009 US2.3
+});
 
 // Constitution: Development Workflow "API documentation" — each module's routes.ts registers
 // its endpoints on the shared OpenAPI registry (lib/openapi.ts) as part of implementing them,
@@ -68,6 +75,7 @@ export function createApp() {
   app.use("/api/documents", documentsRouter);
   app.use("/api/policies", policiesRouter);
   app.use("/api/public/signatures", publicSignaturesRouter);
+  app.use("/api/exit", exitRouter);
 
   if (process.env.NODE_ENV !== "production") {
     const openApiDocument = generateOpenApiDocument();

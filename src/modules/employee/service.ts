@@ -80,26 +80,27 @@ export function onEmployeeCreated(hook: EmployeeCreatedHook): void {
   employeeCreatedHooks.add(hook);
 }
 
-type OnboardingStatusProvider = (orgId: string, employeeIds: string[]) => Promise<Map<string, string>>;
-let onboardingStatusProvider: OnboardingStatusProvider | null = null;
+// Read-time decorations from other modules (007 onboardingStatus, 009 exitStatus): each returns
+// extra fields per employee id, merged into get/list responses. A failing decorator is skipped.
+type EmployeeDecorator = (orgId: string, employeeIds: string[]) => Promise<Map<string, Record<string, unknown>>>;
+const employeeDecorators = new Map<string, EmployeeDecorator>();
 
-// 007 FR-007: directory/profile show IN_PROGRESS | COMPLETE | NONE.
-export function setOnboardingStatusProvider(provider: OnboardingStatusProvider | null): void {
-  onboardingStatusProvider = provider;
+export function registerEmployeeDecorator(name: string, decorator: EmployeeDecorator): void {
+  employeeDecorators.set(name, decorator);
 }
 
-async function withOnboardingStatus<T extends { id: string }>(orgId: string, employees: T[]) {
-  if (!onboardingStatusProvider || employees.length === 0) return employees;
-  try {
-    const statuses = await onboardingStatusProvider(
-      orgId,
-      employees.map((e) => e.id),
-    );
-    return employees.map((e) => ({ ...e, onboardingStatus: statuses.get(e.id) ?? "NONE" }));
-  } catch (err) {
-    logger.warn({ err }, "onboarding status lookup failed");
-    return employees;
+async function decorate<T extends { id: string }>(orgId: string, employees: T[]) {
+  if (employeeDecorators.size === 0 || employees.length === 0) return employees;
+  const ids = employees.map((e) => e.id);
+  const extras = new Map<string, Record<string, unknown>>(ids.map((id) => [id, {}]));
+  for (const [name, decorator] of employeeDecorators) {
+    try {
+      for (const [id, fields] of await decorator(orgId, ids)) Object.assign(extras.get(id) ?? {}, fields);
+    } catch (err) {
+      logger.warn({ err, decorator: name }, "employee decorator failed");
+    }
   }
+  return employees.map((e) => ({ ...e, ...extras.get(e.id) }));
 }
 
 export async function createEmployee(
@@ -162,7 +163,7 @@ export async function createEmployee(
 
 export async function getEmployee(orgId: string, id: string, requester: AccessTokenPayload) {
   const employee = await getEmployeeScoped(orgId, id, requester);
-  const [decorated] = await withOnboardingStatus(orgId, [employee]);
+  const [decorated] = await decorate(orgId, [employee]);
   return decorated ?? employee;
 }
 
@@ -203,10 +204,10 @@ export async function listEmployeesForRequester(
   };
 
   if (requester.role === "ADMIN" || requester.role === "HR") {
-    return withOnboardingStatus(orgId, await repo.listEmployees(orgId, where));
+    return decorate(orgId, await repo.listEmployees(orgId, where));
   }
   if (requester.role === "MANAGER") {
-    return withOnboardingStatus(orgId, await repo.listEmployees(orgId, { ...where, managerId: requester.employeeId }));
+    return decorate(orgId, await repo.listEmployees(orgId, { ...where, managerId: requester.employeeId }));
   }
   // EMPLOYEE: self only
   if (!requester.employeeId) return [];
@@ -310,6 +311,11 @@ export async function listActiveEmployeeSummaries(orgId: string) {
     managerId: e.managerId,
     dateOfJoining: e.dateOfJoining,
   }));
+}
+
+export async function listDirectReportIds(orgId: string, managerId: string) {
+  const reports = await repo.listEmployees(orgId, { managerId, status: "ACTIVE" });
+  return reports.map((r) => r.id);
 }
 
 export async function offboardEmployee(orgId: string, id: string, actor: AccessTokenPayload) {

@@ -8,6 +8,9 @@ export const NotificationTypeSchema = z.enum([
   "INTERVIEW_SCHEDULED",
   "INTERVIEW_RESULT_RECORDED",
   "SIGNATURE_REQUESTED",
+  "RESIGNATION_SUBMITTED",
+  "RESIGNATION_ACKNOWLEDGED",
+  "EXIT_DUE",
 ]);
 export type NotificationType = z.infer<typeof NotificationTypeSchema>;
 

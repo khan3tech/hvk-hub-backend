@@ -631,6 +631,14 @@ model Resignation {
   status              ResignationStatus @default(PENDING)
   exitInterviewNotes  String?
   createdAt           DateTime          @default(now())
+  // 009: lifecycle attribution and timestamps
+  reason              String?
+  acknowledgedById    String?
+  acknowledgedAt      DateTime?
+  withdrawnAt         DateTime?
+  completedAt         DateTime?
+  forcedOffboard      Boolean           @default(false)
+  exitDuePromptedAt   DateTime?
 
   exitChecklist ExitChecklist?
 
@@ -644,6 +652,10 @@ model ExitChecklist {
   resignation   Resignation @relation(fields: [resignationId], references: [id])
   createdAt     DateTime    @default(now())
   tasks         ExitTask[]
+  // FR-009: active direct reports of a resigning manager, captured at creation
+  reportsToReassign Json?
+  // FR-008: set when a withdrawal closes the checklist
+  closedAt      DateTime?
 
   @@index([orgId])
 }
