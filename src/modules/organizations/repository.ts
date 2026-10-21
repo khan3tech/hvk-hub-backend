@@ -55,3 +55,7 @@ export function recordSuperAdminFailure(id: string, lock: boolean) {
 export function resetSuperAdminFailures(id: string) {
   return prisma.superAdmin.update({ where: { id }, data: { failedLoginAttempts: 0 } });
 }
+
+export function setTopEmployee(id: string, topEmployeeId: string | null) {
+  return prisma.organization.update({ where: { id }, data: { topEmployeeId } });
+}

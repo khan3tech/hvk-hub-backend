@@ -83,3 +83,8 @@ export async function createDesignation(req: Request, res: Response): Promise<vo
   const result = await employeeService.createDesignation(getOrgId(req), req.body.title, req.body.level);
   res.status(201).json(result);
 }
+
+export async function setDepartmentHead(req: Request, res: Response): Promise<void> {
+  const actor = req.user as AccessTokenPayload;
+  res.json(await employeeService.setDepartmentHead(getOrgId(req), req.params.id ?? "", req.body.headEmployeeId ?? null, actor));
+}

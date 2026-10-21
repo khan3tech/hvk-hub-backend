@@ -994,6 +994,8 @@ model Organization {
   // 015: human-friendly unique handle used at sign-in when an email exists in several orgs
   slug        String           @unique
   suspendedAt DateTime?
+  // 016 FR-008: the intended top of the company (not flagged as an orphan on the org chart)
+  topEmployeeId String?
 }
 
 // System-level operator, deliberately NOT an Employee/User of any organization (FR-005).

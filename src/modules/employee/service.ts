@@ -320,6 +320,7 @@ export async function listActiveEmployeeSummaries(orgId: string) {
     name: e.name,
     email: e.email,
     departmentId: e.departmentId,
+    designationId: e.designationId,
     managerId: e.managerId,
     dateOfJoining: e.dateOfJoining,
   }));
@@ -395,6 +396,20 @@ export async function createDepartment(orgId: string, name: string) {
     throw new DomainError("DEPARTMENT_EXISTS", "A department with this name already exists.", 409);
   }
   return repo.createDepartment(orgId, name);
+}
+
+// 016 FR-008: department heads are set here (002 owns departments); the org chart only reads.
+export async function setDepartmentHead(orgId: string, departmentId: string, headEmployeeId: string | null, actor: AccessTokenPayload) {
+  if (!(await repo.departmentInOrg(orgId, departmentId))) throw new DomainError("NOT_FOUND", "Department not found.", 404);
+  if (headEmployeeId) {
+    const head = await repo.findEmployeeById(orgId, headEmployeeId);
+    if (!head || head.status !== "ACTIVE") {
+      throw new DomainError("VALIDATION_ERROR", "The department head must be an active employee.", 400, { headEmployeeId: ["Not an active employee."] });
+    }
+  }
+  const updated = await repo.updateDepartment(departmentId, { headEmployeeId });
+  await repo.writeActivityLog({ orgId, actorId: actor.employeeId ?? headEmployeeId ?? departmentId, action: "department.head_set", entity: "Department", entityId: departmentId, after: { headEmployeeId } });
+  return updated;
 }
 
 export async function listDesignations(orgId: string) {

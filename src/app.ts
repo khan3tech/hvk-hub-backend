@@ -33,6 +33,7 @@ import { identityAuthRouter, identityRouter } from "./modules/identity/routes.js
 import { loginPolicy } from "./modules/identity/service.js";
 import { setLoginPolicy, setOrganizationDirectory } from "./modules/auth/service.js";
 import { platformRouter } from "./modules/organizations/routes.js";
+import { orgChartRouter } from "./modules/orgchart/routes.js";
 import { organizationDirectory } from "./modules/organizations/service.js";
 import { assetsRouter } from "./modules/assets/routes.js";
 import * as assets from "./modules/assets/service.js";
@@ -102,6 +103,7 @@ export function createApp() {
   app.use("/api/assets", assetsRouter);
   app.use("/api/expenses", expensesRouter);
   app.use("/api/platform", platformRouter); // 015 super-admin tier
+  app.use("/api/org-chart", orgChartRouter);
 
   if (process.env.NODE_ENV !== "production") {
     const openApiDocument = generateOpenApiDocument();

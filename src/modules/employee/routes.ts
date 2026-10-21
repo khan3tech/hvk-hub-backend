@@ -85,6 +85,17 @@ departmentRouter.post(
   },
 );
 
+// 016 FR-008: assign (or clear) a department head.
+departmentRouter.patch(
+  "/:id",
+  authenticate,
+  authorize("ADMIN", "HR"),
+  validate(z.object({ headEmployeeId: z.string().nullable() })),
+  (req, res, next) => {
+    controller.setDepartmentHead(req, res).catch(next);
+  },
+);
+
 export const designationRouter = Router();
 
 designationRouter.get("/", authenticate, (req, res, next) => {
@@ -220,6 +231,19 @@ registry.registerPath({
   responses: {
     201: { description: "Created.", content: { "application/json": { schema: DepartmentSchema } } },
   },
+});
+
+registry.registerPath({
+  method: "patch",
+  path: "/departments/{id}",
+  tags: ["Employees"],
+  description: "Set or clear a department's head (an active employee). Admin/HR.",
+  security: [{ [bearerAuth.name]: [] }],
+  request: {
+    params: z.object({ id: z.string() }),
+    body: { content: { "application/json": { schema: z.object({ headEmployeeId: z.string().nullable() }) } } },
+  },
+  responses: { 200: { description: "Updated.", content: { "application/json": { schema: DepartmentSchema } } } },
 });
 
 registry.registerPath({

@@ -132,3 +132,13 @@ export const organizationDirectory: OrganizationDirectory = {
     return !org || org.status === "ACTIVE";
   },
 };
+
+// 016 FR-008: the designated top of an organization's chart (read/written by the org chart).
+export async function getTopEmployeeId(orgId: string) {
+  return (await repo.findOrganization(orgId))?.topEmployeeId ?? null;
+}
+
+export async function setTopEmployeeId(orgId: string, employeeId: string | null) {
+  if (!(await repo.findOrganization(orgId))) throw new DomainError("NOT_FOUND", "Organization not found.", 404);
+  await repo.setTopEmployee(orgId, employeeId);
+}

@@ -103,3 +103,7 @@ export function departmentInOrg(orgId: string, id: string) {
 export function designationInOrg(orgId: string, id: string) {
   return prisma.designation.count({ where: { id, orgId } }).then((n) => n > 0);
 }
+
+export function updateDepartment(id: string, data: Prisma.DepartmentUncheckedUpdateInput) {
+  return prisma.department.update({ where: { id }, data });
+}

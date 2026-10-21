@@ -97,3 +97,13 @@ export async function download(path, token) {
   const res = await fetch(API + path, { headers: token ? { authorization: `Bearer ${token}` } : {} });
   return { status: res.status, body: Buffer.from(await res.arrayBuffer()), type: res.headers.get("content-type") };
 }
+
+// One platform (super-admin) sign-in per run — its login is rate-limited.
+let platformTokenPromise;
+export function platformToken() {
+  platformTokenPromise ??= call("POST", "/platform/auth/login", { body: { email: process.env.SUPER_ADMIN_EMAIL ?? "platform@teamloom.dev", password: process.env.SUPER_ADMIN_PASSWORD ?? SEED_PASSWORD } }).then((r) => {
+    if (r.status !== 200) throw new Error("platform login failed: " + show(r));
+    return r.json.accessToken;
+  });
+  return platformTokenPromise;
+}

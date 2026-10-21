@@ -1,6 +1,6 @@
 // specs/015-multi-tenant-activation — FR-010/SC-001: org B must never see or touch org A's data.
 // Org A is the seeded default org; org B is provisioned fresh each run through the platform tier.
-import { call, check, show, login, upload, download, future, PDF, RUN, SEED_PASSWORD } from "./lib.mjs";
+import { call, check, show, login, upload, download, future, platformToken, PDF, RUN } from "./lib.mjs";
 
 const ids = (r) => new Set((Array.isArray(r.json) ? r.json : []).map((x) => x.id));
 const none = (r, aIds) => r.status === 200 && ![...aIds].some((id) => ids(r).has(id));
@@ -28,9 +28,8 @@ export default async function ({ tok, me, hire }) {
   const aNotif = (await call("GET", "/notifications", { token: tok.manager })).json.items?.[0];
 
   // ---- Provision org B through the platform tier
-  const op = await call("POST", "/platform/auth/login", { body: { email: "platform@teamloom.dev", password: SEED_PASSWORD } });
-  check("015 super-admin signs in to the platform tier (FR-005)", op.status === 200 && op.json.accessToken, show(op));
-  const pt = op.json.accessToken;
+  const pt = await platformToken();
+  check("015 super-admin signs in to the platform tier (FR-005)", typeof pt === "string" && pt.length > 20, String(pt));
   const orgUserOnPlatform = await call("GET", "/platform/organizations", { token: tok.admin });
   const platformOnOrg = await call("GET", "/employees", { token: pt });
   check("015 org tokens can't reach the platform, nor platform tokens the org API", orgUserOnPlatform.status === 401 && platformOnOrg.status === 401, `${orgUserOnPlatform.status}/${platformOnOrg.status}`);
