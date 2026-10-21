@@ -7,7 +7,7 @@ import { authenticate } from "../../middleware/authenticate.js";
 import { authorize } from "../../middleware/authorize.js";
 import { validate } from "../../middleware/validate.js";
 import * as c from "./controller.js";
-import { uploadFile } from "./upload.js";
+import { uploadFile } from "../../middleware/upload.js";
 import {
   CreateSignatureRequestSchema,
   CreatedSignatureRequestSchema,

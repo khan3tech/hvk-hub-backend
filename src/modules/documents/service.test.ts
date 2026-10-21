@@ -28,7 +28,7 @@ const employees = await import("../employee/service.js");
 const recruitment = await import("../recruitment/service.js");
 const { setStorage } = await import("../../lib/storage.js");
 const { setEmailSender } = await import("../../lib/email.js");
-const { assertAcceptedFile } = await import("./upload.js");
+const { assertAcceptedFile } = await import("../../middleware/upload.js");
 const service = await import("./service.js");
 
 const ORG = "org_1";

@@ -14,9 +14,10 @@ import type {
 } from "./schema.js";
 
 // research.md R1: the standard template an org starts with (FR-010 makes it editable).
-export const DEFAULT_TEMPLATE: Array<{ description: string; ownerRole: OnboardingOwnerRole }> = [
+export const DEFAULT_TEMPLATE: Array<{ description: string; ownerRole: OnboardingOwnerRole; systemKey?: string }> = [
   { description: "Submit ID proof and bank details", ownerRole: "EMPLOYEE" },
-  { description: "Assign laptop and accounts", ownerRole: "IT" },
+  // 014 FR-005: completed automatically when an asset is assigned to the hire.
+  { description: "Assign laptop and accounts", ownerRole: "IT", systemKey: "ASSET_ASSIGNMENT" },
   { description: "Team introduction and desk setup", ownerRole: "MANAGER" },
   { description: "Complete company induction", ownerRole: "HR" },
   { description: "Read and acknowledge company policies", ownerRole: "EMPLOYEE" },
@@ -118,7 +119,7 @@ export async function attachChecklist(orgId: string, employeeId: string, actor: 
   const checklist = await repo.createChecklistWithTasks(
     orgId,
     employeeId,
-    template.map((t, position) => ({ description: t.description, ownerRole: t.ownerRole, position })),
+    template.map((t, position) => ({ description: t.description, ownerRole: t.ownerRole, position, systemKey: t.systemKey })),
   );
   if (actor.employeeId) {
     await repo.writeActivityLog({
@@ -278,4 +279,15 @@ export async function statusesFor(orgId: string, employeeIds: string[]) {
   const checklists = await repo.listChecklistsWithTasks(orgId, employeeIds);
   const status = new Map(checklists.map((c) => [c.employeeId, summarize(c.tasks).status as string]));
   return new Map(employeeIds.map((id) => [id, { onboardingStatus: status.get(id) ?? "NONE" }]));
+}
+
+// 014 FR-005: another feature completes a tagged task (e.g. ASSET_ASSIGNMENT on asset assignment).
+// No checklist or no such open task is a no-op — assets can be assigned outside onboarding.
+export async function completeSystemTask(orgId: string, employeeId: string, systemKey: string, actor: AccessTokenPayload) {
+  const checklist = await repo.findChecklistByEmployee(orgId, employeeId);
+  const task = checklist?.tasks.find((t) => t.systemKey === systemKey && t.status === "INCOMPLETE");
+  if (!task || !actor.employeeId) return false;
+  const { count } = await repo.completeTask(task.id, actor.employeeId);
+  if (count > 0) await audit(orgId, actor, "onboarding.task_completed", task.id, { completedById: actor.employeeId, systemKey });
+  return count > 0;
 }

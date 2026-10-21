@@ -11,7 +11,8 @@ import type { SubmitResignationRequest } from "./schema.js";
 // FR-005: clearance owned by IT, Finance and HR (no login role maps to IT/Finance, so HR/Admin
 // complete them on those teams' behalf — research.md R3).
 export const DEFAULT_EXIT_TASKS = [
-  { ownerRole: "IT" as const, description: "Collect laptop/assets and revoke system accounts" },
+  // 014 FR-006: completed automatically once the employee's assets are all returned.
+  { ownerRole: "IT" as const, description: "Collect laptop/assets and revoke system accounts", systemKey: "ASSET_RETURN" },
   { ownerRole: "FINANCE" as const, description: "Process final settlement" },
   { ownerRole: "HR" as const, description: "Conduct exit interview" },
   { ownerRole: "HR" as const, description: "Issue relieving and experience letters" },
@@ -139,7 +140,7 @@ export async function acknowledgeResignation(orgId: string, id: string, confirme
   const reports = await Promise.all(
     reportIds.map(async (rid) => ({ id: rid, name: (await getEmployeeSummary(orgId, rid))?.name ?? rid })),
   );
-  const tasks = [...DEFAULT_EXIT_TASKS];
+  const tasks: Array<{ ownerRole: "IT" | "FINANCE" | "HR"; description: string; systemKey?: string }> = [...DEFAULT_EXIT_TASKS];
   if (reports.length > 0) {
     tasks.push({ ownerRole: "HR", description: `Reassign ${reports.length} direct report(s) to a new manager` });
   }
@@ -192,10 +193,22 @@ export async function getChecklist(orgId: string, resignationId: string) {
   return presentChecklist(checklist);
 }
 
+// 014 US2.3: another feature can veto manual completion of a tagged task while its real-world
+// condition is unmet (e.g. ASSET_RETURN while assets are still assigned). Registered in app.ts.
+type ExitTaskGuard = (orgId: string, employeeId: string) => Promise<string | null>;
+const taskGuards = new Map<string, ExitTaskGuard>();
+
+export function registerExitTaskGuard(systemKey: string, guard: ExitTaskGuard): void {
+  taskGuards.set(systemKey, guard);
+}
+
 export async function completeExitTask(orgId: string, taskId: string, actor: AccessTokenPayload) {
   const task = await repo.findTask(orgId, taskId);
   if (!task) throw new DomainError("NOT_FOUND", "Exit task not found.", 404);
   if (task.checklist.closedAt) throw new DomainError("CHECKLIST_CLOSED", "This exit checklist was closed.", 409);
+  const guard = task.systemKey ? taskGuards.get(task.systemKey) : undefined;
+  const blocked = guard ? await guard(orgId, task.checklist.resignation.employeeId) : null;
+  if (blocked) throw new DomainError("TASK_BLOCKED", blocked, 409);
   if (!actor.employeeId) throw new DomainError("FORBIDDEN", "Your account has no employee record to attribute this to.", 403);
   const { count } = await repo.completeTask(taskId, actor.employeeId);
   if (count === 0) throw new DomainError("ALREADY_COMPLETE", "This task is already complete.", 409);
@@ -260,4 +273,16 @@ export async function exitStatusFor(orgId: string, employeeIds: string[]) {
       ];
     }),
   );
+}
+
+// 014 FR-006: complete a tagged task on the employee's active exit checklist, if any.
+export async function completeSystemTask(orgId: string, employeeId: string, systemKey: string, actor: AccessTokenPayload) {
+  const active = await repo.findActiveResignation(orgId, employeeId);
+  if (!active || active.status !== "SERVING_NOTICE" || !actor.employeeId) return false;
+  const checklist = await repo.findChecklistByResignation(orgId, active.id);
+  const task = checklist?.tasks.find((t) => t.systemKey === systemKey && t.status === "INCOMPLETE");
+  if (!checklist || checklist.closedAt || !task) return false;
+  const { count } = await repo.completeTask(task.id, actor.employeeId);
+  if (count > 0) await audit(orgId, actor, "exit.task_completed", active.id, { taskId: task.id, systemKey });
+  return count > 0;
 }

@@ -478,6 +478,8 @@ model OnboardingTaskTemplate {
   description String
   ownerRole   OnboardingOwnerRole @default(HR)
   order       Int
+  // 014: marks a task other features complete automatically (e.g. ASSET_ASSIGNMENT)
+  systemKey   String?
 
   @@index([orgId, order])
 }
@@ -508,6 +510,7 @@ model OnboardingTask {
   ownerEmployeeId String?
   position        Int                 @default(0)
   createdAt       DateTime            @default(now())
+  systemKey       String?
 
   @@index([checklistId, status])
   @@index([orgId, ownerEmployeeId])
@@ -674,6 +677,8 @@ model ExitTask {
   completedById String?
   completedBy   Employee?             @relation(fields: [completedById], references: [id])
   completedAt   DateTime?
+  // 014: e.g. ASSET_RETURN — completed automatically and guarded by the assets module
+  systemKey     String?
 
   @@index([checklistId, status])
 }
@@ -908,6 +913,7 @@ model Asset {
   description String
   identifier  String
   status      AssetStatus @default(UNASSIGNED)
+  createdAt   DateTime    @default(now())
 
   assignments AssetAssignment[]
 
@@ -924,6 +930,10 @@ model AssetAssignment {
   employee   Employee  @relation(fields: [employeeId], references: [id])
   assignedAt DateTime  @default(now())
   returnedAt DateTime?
+  // 014: who assigned/closed it, and how it ended (RETURNED | LOST | DAMAGED)
+  assignedById String?
+  closedById   String?
+  outcome      String?
 
   @@index([assetId])
   @@index([employeeId])
@@ -943,8 +953,26 @@ model ExpenseClaim {
   rejectionReason  String?
   paidAt           DateTime?
   createdAt        DateTime      @default(now())
+  // 014: receipt metadata (receiptUrl holds the storage key), description, decision trail
+  description      String?
+  receiptName      String?
+  receiptContentType String?
+  decidedAt        DateTime?
+  paidById         String?
 
   @@index([orgId, status])
+}
+
+// 014 FR-008: HR-configurable expense categories; requiresReceipt blocks submission without one.
+model ExpenseCategory {
+  id              String   @id @default(cuid())
+  orgId           String
+  name            String
+  requiresReceipt Boolean  @default(true)
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+
+  @@unique([orgId, name])
 }
 
 // ============================================================================

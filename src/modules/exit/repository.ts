@@ -37,7 +37,7 @@ export function updateResignation(id: string, data: Prisma.ResignationUncheckedU
 export function createChecklist(
   orgId: string,
   resignationId: string,
-  tasks: Array<{ ownerRole: ExitTaskOwnerRole; description: string }>,
+  tasks: Array<{ ownerRole: ExitTaskOwnerRole; description: string; systemKey?: string | null }>,
   reportsToReassign: Prisma.InputJsonValue | null,
 ) {
   return prisma.exitChecklist.create({

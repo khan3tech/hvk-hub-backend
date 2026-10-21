@@ -1,6 +1,6 @@
 import multer from "multer";
 import type { NextFunction, Request, Response } from "express";
-import { DomainError } from "../../middleware/errorHandler.js";
+import { DomainError } from "./errorHandler.js";
 
 // FR-012: size and type are checked before anything is stored. Type is checked twice — the
 // declared MIME type and the file's leading bytes — so a renamed .exe isn't accepted as a PDF.

@@ -38,7 +38,7 @@ export function findChecklistByEmployee(orgId: string, employeeId: string) {
 export function createChecklistWithTasks(
   orgId: string,
   employeeId: string,
-  tasks: Array<{ description: string; ownerRole: OnboardingOwnerRole; position: number }>,
+  tasks: Array<{ description: string; ownerRole: OnboardingOwnerRole; position: number; systemKey?: string | null }>,
 ) {
   return prisma.onboardingChecklist.create({
     data: {

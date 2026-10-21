@@ -32,6 +32,9 @@ import { performanceRouter } from "./modules/performance/routes.js";
 import { identityAuthRouter, identityRouter } from "./modules/identity/routes.js";
 import { loginPolicy } from "./modules/identity/service.js";
 import { setLoginPolicy } from "./modules/auth/service.js";
+import { assetsRouter } from "./modules/assets/routes.js";
+import * as assets from "./modules/assets/service.js";
+import { expensesRouter } from "./modules/expenses/routes.js";
 import { calculateStatutory } from "./modules/statutory/service.js";
 import { setStatutoryCalculator } from "./modules/payroll/service.js";
 
@@ -40,6 +43,8 @@ import { setStatutoryCalculator } from "./modules/payroll/service.js";
 onEmployeeCreated(onboarding.onEmployeeCreated); // 007 FR-001
 registerEmployeeDecorator("onboarding", onboarding.statusesFor); // 007 FR-007
 registerEmployeeDecorator("exit", exit.exitStatusFor); // 009 FR-004
+registerEmployeeDecorator("assets", assets.assetsDecorator); // 014 FR-004
+exit.registerExitTaskGuard("ASSET_RETURN", assets.assetReturnGuard); // 014 US2.3
 setStatutoryCalculator(calculateStatutory); // 010 FR-004
 setLoginPolicy(loginPolicy); // 013 SSO enforcement + MFA
 registerJob("exit-due-prompts", 60 * 60 * 1000, async () => {
@@ -91,6 +96,8 @@ export function createApp() {
   app.use("/api/analytics", analyticsRouter);
   app.use("/api/performance", performanceRouter);
   app.use("/api/identity", identityRouter);
+  app.use("/api/assets", assetsRouter);
+  app.use("/api/expenses", expensesRouter);
 
   if (process.env.NODE_ENV !== "production") {
     const openApiDocument = generateOpenApiDocument();
