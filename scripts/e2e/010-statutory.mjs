@@ -49,14 +49,19 @@ export default async function ({ tok, hire }) {
   const periodSlips = (await call("GET", `/payroll/payslips?periodMonth=3&periodYear=${Y}`, { token: tok.hr })).json;
   const lineSum = Math.round(periodSlips.flatMap((p) => p.statutoryDeductions ?? []).reduce((s, l) => s + l.amount, 0) * 100) / 100;
   check("010 compliance report totals = sum of payslip lines (FR-006, SC-003)", rep1.status === 201 && rep1.json.totals.grandTotal === lineSum, `${rep1.json.totals?.grandTotal} vs ${lineSum}`);
+  // Other salaried employees in this shared DB are deducted too, so reconcile against the period's payslips.
+  const groupLines = (slips, g) => slips.flatMap((p) => (p.statutoryDeductions ?? []).filter((l) => l.groupId === g));
+  const ptLines1 = groupLines(periodSlips, pt.json.groupId);
   const ptTotal1 = rep1.json.totals.components.find((c) => c.groupId === pt.json.groupId);
-  check("010 per-component total and employee count", ptTotal1?.totalWithheld === 200 && ptTotal1.employeeCount === 1, JSON.stringify(ptTotal1));
+  check("010 per-component total and employee count match payslips", ptTotal1?.totalWithheld === ptLines1.reduce((s, l) => s + l.amount, 0) && ptTotal1.employeeCount === ptLines1.length && ptLines1.every((l) => l.amount === 200), JSON.stringify(ptTotal1));
 
   await run(3); // re-run March: PT v2 (effective Mar 15) now applies
   const rerun = await slip(a, 3);
   check("010 re-run picks up the rule in effect for the period (FR-008)", mine([pt.json.groupId], rerun)[0]?.amount === 300, JSON.stringify(rerun));
   const rep2 = await call("POST", "/statutory/reports", { token: tok.hr, body: { periodMonth: 3, periodYear: Y } });
-  check("010 regenerated report reflects corrected totals", rep2.json.totals.components.find((c) => c.groupId === pt.json.groupId)?.totalWithheld === 300, show(rep2));
+  const ptLines2 = groupLines((await call("GET", `/payroll/payslips?periodMonth=3&periodYear=${Y}`, { token: tok.hr })).json, pt.json.groupId);
+  const ptTotal2 = rep2.json.totals.components.find((c) => c.groupId === pt.json.groupId);
+  check("010 regenerated report reflects corrected totals", ptLines2.every((l) => l.amount === 300) && ptTotal2?.totalWithheld === 300 * ptLines2.length, JSON.stringify(ptTotal2));
 
   await run(4);
   const april = await slip(a, 4);

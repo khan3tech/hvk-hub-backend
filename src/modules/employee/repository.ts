@@ -79,3 +79,18 @@ export function findOffboardActivityLog(orgId: string, employeeId: string) {
     orderBy: { createdAt: "desc" },
   });
 }
+
+export function listAllEmployees(orgId: string) {
+  return prisma.employee.findMany({
+    where: { orgId },
+    select: { id: true, name: true, departmentId: true, designationId: true, dateOfJoining: true, status: true },
+  });
+}
+
+export function findOffboardDates(orgId: string) {
+  return prisma.activityLog.findMany({
+    where: { orgId, entity: "Employee", action: "employee.offboarded" },
+    select: { entityId: true, createdAt: true },
+    orderBy: { createdAt: "asc" },
+  });
+}

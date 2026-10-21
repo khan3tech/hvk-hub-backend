@@ -437,3 +437,8 @@ export async function rejectLeaveRequest(
 ) {
   return decideLeaveRequest(orgId, id, "REJECTED", actor, input.reason);
 }
+
+// Bulk read for 011 analytics (leave usage). Requests are attributed to the period they start in.
+export async function listApprovedLeaveForAnalytics(orgId: string, from: Date, to: Date) {
+  return repo.findApprovedLeaveStartingIn(orgId, from, to);
+}

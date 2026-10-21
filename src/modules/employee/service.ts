@@ -318,6 +318,13 @@ export async function listDirectReportIds(orgId: string, managerId: string) {
   return reports.map((r) => r.id);
 }
 
+// Bulk read for 011 analytics: every employee (incl. offboarded) with their offboarding date.
+export async function listEmployeesForAnalytics(orgId: string) {
+  const [employees, offboards] = await Promise.all([repo.listAllEmployees(orgId), repo.findOffboardDates(orgId)]);
+  const offboardedAt = new Map(offboards.map((o) => [o.entityId, o.createdAt])); // latest wins (asc order)
+  return employees.map((e) => ({ ...e, offboardedAt: e.status === "OFFBOARDED" ? offboardedAt.get(e.id) ?? null : null }));
+}
+
 export async function offboardEmployee(orgId: string, id: string, actor: AccessTokenPayload) {
   const existing = await repo.findEmployeeById(orgId, id);
   if (!existing) {

@@ -330,3 +330,20 @@ export async function getTeamPayslips(
   if (reportIds.length === 0) return [];
   return repo.findPayslipsForEmployees(orgId, reportIds, filters);
 }
+
+// 011 analytics FR-006/FR-007: per-period totals from the current payslips (a re-run period has
+// already replaced its payslips, so totals are always the corrected ones).
+export async function getPayrollCostByPeriod(orgId: string) {
+  const payslips = await repo.findPayslipsOrgWide(orgId);
+  const byPeriod = new Map<string, { periodYear: number; periodMonth: number; netPay: number; gross: number; statutory: number; payslipCount: number }>();
+  for (const p of payslips) {
+    const key = `${p.periodYear}-${String(p.periodMonth).padStart(2, "0")}`;
+    const row = byPeriod.get(key) ?? { periodYear: p.periodYear, periodMonth: p.periodMonth, netPay: 0, gross: 0, statutory: 0, payslipCount: 0 };
+    row.netPay += p.netPay;
+    row.gross += Object.values(p.earnings as Record<string, number>).reduce((s, v) => s + v, 0);
+    row.statutory += ((p.statutoryDeductions as Array<{ amount: number }> | null) ?? []).reduce((s, l) => s + l.amount, 0);
+    row.payslipCount += 1;
+    byPeriod.set(key, row);
+  }
+  return [...byPeriod.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([period, r]) => ({ period, ...r }));
+}

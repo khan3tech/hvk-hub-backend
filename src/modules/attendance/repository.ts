@@ -168,3 +168,11 @@ export function writeActivityLog(params: {
     },
   });
 }
+
+// 011 analytics: approved leave starting within [from, to].
+export function findApprovedLeaveStartingIn(orgId: string, from: Date, to: Date) {
+  return prisma.leaveRequest.findMany({
+    where: { orgId, status: "APPROVED", startDate: { gte: from, lte: to } },
+    select: { employeeId: true, leaveTypeId: true, days: true, startDate: true },
+  });
+}
