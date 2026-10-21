@@ -78,3 +78,22 @@ export async function setup() {
 
   return { tok, me, depts, desigs, hire, department };
 }
+
+// Multipart upload: fields is a plain object; file is { bytes: Buffer|string, name, type }.
+export async function upload(path, { token, fields = {}, file }) {
+  const form = new FormData();
+  for (const [k, v] of Object.entries(fields)) form.append(k, String(v));
+  if (file) form.append("file", new Blob([file.bytes], { type: file.type }), file.name);
+  const res = await fetch(API + path, { method: "POST", headers: token ? { authorization: `Bearer ${token}` } : {}, body: form });
+  const text = await res.text();
+  let json;
+  try { json = JSON.parse(text); } catch { json = text; }
+  return { status: res.status, json };
+}
+
+export const PDF = (label = "doc") => ({ bytes: Buffer.from(`%PDF-1.4\n% ${label}\n%%EOF\n`), name: `${label}.pdf`, type: "application/pdf" });
+
+export async function download(path, token) {
+  const res = await fetch(API + path, { headers: token ? { authorization: `Bearer ${token}` } : {} });
+  return { status: res.status, body: Buffer.from(await res.arrayBuffer()), type: res.headers.get("content-type") };
+}

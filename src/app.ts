@@ -20,6 +20,7 @@ import { payrollRouter } from "./modules/payroll/routes.js";
 import { recruitmentRouter } from "./modules/recruitment/routes.js";
 import { notificationsRouter } from "./modules/notifications/routes.js";
 import { onboardingRouter } from "./modules/onboarding/routes.js";
+import { documentsRouter, policiesRouter, publicSignaturesRouter } from "./modules/documents/routes.js";
 import { onEmployeeCreated, setOnboardingStatusProvider } from "./modules/employee/service.js";
 import * as onboarding from "./modules/onboarding/service.js";
 
@@ -64,6 +65,9 @@ export function createApp() {
   app.use("/api/recruitment", recruitmentRouter);
   app.use("/api/notifications", notificationsRouter);
   app.use("/api/onboarding", onboardingRouter);
+  app.use("/api/documents", documentsRouter);
+  app.use("/api/policies", policiesRouter);
+  app.use("/api/public/signatures", publicSignaturesRouter);
 
   if (process.env.NODE_ENV !== "production") {
     const openApiDocument = generateOpenApiDocument();

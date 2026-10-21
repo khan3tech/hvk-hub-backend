@@ -299,6 +299,19 @@ export async function getEmployeeSummary(orgId: string, employeeId: string) {
   };
 }
 
+// Active employees as summaries, for org-wide features (e.g. 008 policy acknowledgment tracking).
+export async function listActiveEmployeeSummaries(orgId: string) {
+  const employees = await repo.listEmployees(orgId, { status: "ACTIVE" });
+  return employees.map((e) => ({
+    id: e.id,
+    name: e.name,
+    email: e.email,
+    departmentId: e.departmentId,
+    managerId: e.managerId,
+    dateOfJoining: e.dateOfJoining,
+  }));
+}
+
 export async function offboardEmployee(orgId: string, id: string, actor: AccessTokenPayload) {
   const existing = await repo.findEmployeeById(orgId, id);
   if (!existing) {

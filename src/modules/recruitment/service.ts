@@ -194,6 +194,18 @@ export async function getCandidate(orgId: string, id: string) {
   return candidate;
 }
 
+// Unscoped read for other modules (e.g. 008 attaching a signed offer to an application).
+export async function getApplicationSummary(orgId: string, id: string) {
+  const application = await repo.findApplicationById(orgId, id);
+  if (!application) return null;
+  return {
+    id: application.id,
+    candidateId: application.candidateId,
+    jobPostingId: application.jobPostingId,
+    stage: application.stage,
+  };
+}
+
 // --- Applications & pipeline (User Stories 2 and 3) ---
 
 export async function createApplication(

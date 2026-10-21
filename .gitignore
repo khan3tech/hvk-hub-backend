@@ -37,3 +37,6 @@ skills-lock.json
 # Test / coverage
 coverage/
 .claude/settings.json
+
+# Local document storage (lib/storage.ts LocalDiskStorage)
+storage/

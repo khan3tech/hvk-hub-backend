@@ -10,3 +10,4 @@ specs
 *.md
 .env
 .env.*
+storage

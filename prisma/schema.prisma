@@ -517,6 +517,8 @@ model OnboardingTask {
 enum DocumentOwnerType {
   EMPLOYEE
   CANDIDATE
+  // 008: company-wide files (e.g. a published policy) owned by no single person
+  ORGANIZATION
 }
 
 enum SignatureStatus {
@@ -537,6 +539,13 @@ model Document {
   version     Int               @default(1)
   isCurrent   Boolean           @default(true)
   uploadedAt  DateTime          @default(now())
+  // 008: fileUrl holds the storage key (lib/storage.ts); these describe the stored file.
+  contentType    String?
+  sizeBytes      Int?
+  originalName   String?
+  uploadedById   String?
+  // FR-003: personal documents are owner + HR/Admin only unless explicitly manager-visible.
+  managerVisible Boolean           @default(false)
 
   signatureRequests      SignatureRequest[]
   courseAssignmentProofs CourseAssignment[]
@@ -560,6 +569,12 @@ model SignatureRequest {
   signedAt              DateTime?
   signedByName          String?
   createdAt             DateTime          @default(now())
+  // 008: who sent it, the signing user (employees), the offer's application (US2.4), and the
+  // hashed single-use link token candidates sign through (they have no login).
+  sentById              String?
+  signedByUserId        String?
+  applicationId         String?
+  accessTokenHash       String?           @unique
 
   @@index([orgId, status])
 }
