@@ -501,8 +501,13 @@ model OnboardingTask {
   completedById String?
   completedBy   Employee?             @relation(fields: [completedById], references: [id])
   completedAt   DateTime?
+  // FR-006: a specific person this task is reassigned to (overrides ownerRole routing).
+  ownerEmployeeId String?
+  position        Int                 @default(0)
+  createdAt       DateTime            @default(now())
 
   @@index([checklistId, status])
+  @@index([orgId, ownerEmployeeId])
 }
 
 // ============================================================================

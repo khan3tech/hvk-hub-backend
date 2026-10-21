@@ -19,6 +19,14 @@ import {
 import { payrollRouter } from "./modules/payroll/routes.js";
 import { recruitmentRouter } from "./modules/recruitment/routes.js";
 import { notificationsRouter } from "./modules/notifications/routes.js";
+import { onboardingRouter } from "./modules/onboarding/routes.js";
+import { onEmployeeCreated, setOnboardingStatusProvider } from "./modules/employee/service.js";
+import * as onboarding from "./modules/onboarding/service.js";
+
+// Cross-module extension points (Principle I): modules that build on Employee register here
+// rather than the employee module importing them.
+onEmployeeCreated(onboarding.onEmployeeCreated); // 007 FR-001
+setOnboardingStatusProvider(onboarding.statusesFor); // 007 FR-007
 
 // Constitution: Development Workflow "API documentation" — each module's routes.ts registers
 // its endpoints on the shared OpenAPI registry (lib/openapi.ts) as part of implementing them,
@@ -55,6 +63,7 @@ export function createApp() {
   app.use("/api/payroll", payrollRouter);
   app.use("/api/recruitment", recruitmentRouter);
   app.use("/api/notifications", notificationsRouter);
+  app.use("/api/onboarding", onboardingRouter);
 
   if (process.env.NODE_ENV !== "production") {
     const openApiDocument = generateOpenApiDocument();

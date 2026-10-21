@@ -6,6 +6,7 @@ import moment from "moment";
 import { randomBytes } from "node:crypto";
 import { DomainError } from "../../middleware/errorHandler.js";
 import { revokeAllSessionsForUser } from "../auth/service.js";
+import { logger } from "../../lib/logger.js";
 import * as repo from "./repository.js";
 import type { AccessTokenPayload } from "../../lib/jwt.js";
 import type { CreateEmployeeRequest, UpdateEmployeeRequest } from "./schema.js";
@@ -68,6 +69,39 @@ function toDirectoryEntry(employee: { id: string; name: string; departmentId: st
   };
 }
 
+// --- Extension points for modules that build on Employee (Principle I: they register here at
+// startup in app.ts instead of this module importing them, which would create import cycles) ---
+
+type EmployeeCreatedHook = (orgId: string, employeeId: string, actor: AccessTokenPayload) => Promise<void>;
+const employeeCreatedHooks = new Set<EmployeeCreatedHook>();
+
+// e.g. 007-employee-onboarding attaches a checklist to every new employee (FR-001).
+export function onEmployeeCreated(hook: EmployeeCreatedHook): void {
+  employeeCreatedHooks.add(hook);
+}
+
+type OnboardingStatusProvider = (orgId: string, employeeIds: string[]) => Promise<Map<string, string>>;
+let onboardingStatusProvider: OnboardingStatusProvider | null = null;
+
+// 007 FR-007: directory/profile show IN_PROGRESS | COMPLETE | NONE.
+export function setOnboardingStatusProvider(provider: OnboardingStatusProvider | null): void {
+  onboardingStatusProvider = provider;
+}
+
+async function withOnboardingStatus<T extends { id: string }>(orgId: string, employees: T[]) {
+  if (!onboardingStatusProvider || employees.length === 0) return employees;
+  try {
+    const statuses = await onboardingStatusProvider(
+      orgId,
+      employees.map((e) => e.id),
+    );
+    return employees.map((e) => ({ ...e, onboardingStatus: statuses.get(e.id) ?? "NONE" }));
+  } catch (err) {
+    logger.warn({ err }, "onboarding status lookup failed");
+    return employees;
+  }
+}
+
 export async function createEmployee(
   orgId: string,
   input: CreateEmployeeRequest & { role?: string },
@@ -114,10 +148,25 @@ export async function createEmployee(
     after: { employeeCode, name: employee.name, email: employee.email },
   });
 
+  for (const hook of employeeCreatedHooks) {
+    try {
+      await hook(orgId, employee.id, actor);
+    } catch (err) {
+      // The employee record stands; HR can attach e.g. the checklist manually (007 FR-005).
+      logger.error({ err, employeeId: employee.id }, "employee-created hook failed");
+    }
+  }
+
   return { ...employee, temporaryPassword };
 }
 
 export async function getEmployee(orgId: string, id: string, requester: AccessTokenPayload) {
+  const employee = await getEmployeeScoped(orgId, id, requester);
+  const [decorated] = await withOnboardingStatus(orgId, [employee]);
+  return decorated ?? employee;
+}
+
+async function getEmployeeScoped(orgId: string, id: string, requester: AccessTokenPayload) {
   const employee = await repo.findEmployeeById(orgId, id);
   if (!employee) {
     throw new DomainError("NOT_FOUND", "Employee not found.", 404);
@@ -154,10 +203,10 @@ export async function listEmployeesForRequester(
   };
 
   if (requester.role === "ADMIN" || requester.role === "HR") {
-    return repo.listEmployees(orgId, where);
+    return withOnboardingStatus(orgId, await repo.listEmployees(orgId, where));
   }
   if (requester.role === "MANAGER") {
-    return repo.listEmployees(orgId, { ...where, managerId: requester.employeeId });
+    return withOnboardingStatus(orgId, await repo.listEmployees(orgId, { ...where, managerId: requester.employeeId }));
   }
   // EMPLOYEE: self only
   if (!requester.employeeId) return [];
@@ -246,6 +295,7 @@ export async function getEmployeeSummary(orgId: string, employeeId: string) {
     status: employee.status,
     departmentId: employee.departmentId,
     managerId: employee.managerId,
+    dateOfJoining: employee.dateOfJoining,
   };
 }
 

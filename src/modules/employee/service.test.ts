@@ -31,6 +31,7 @@ const {
   offboardEmployee,
   getTeamView,
   getOffboardedDate,
+  onEmployeeCreated,
 } = await import("./service.js");
 
 const ORG_ID = "org_1";
@@ -331,5 +332,31 @@ describe("employee service — getOffboardedDate (004-payroll research.md R4)", 
     const result = await getOffboardedDate(ORG_ID, "emp_1");
 
     expect(result).toBeNull();
+  });
+});
+
+describe("employee service — employee-created hooks (007 FR-001)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(repo.findEmployeeByEmail).mockResolvedValue(null);
+    vi.mocked(repo.countEmployees).mockResolvedValue(0);
+    vi.mocked(repo.createEmployee).mockResolvedValue(makeEmployee() as never);
+  });
+
+  it("runs registered hooks after creation, and a failing hook does not fail the create", async () => {
+    const ok = vi.fn().mockResolvedValue(undefined);
+    const broken = vi.fn().mockRejectedValue(new Error("checklist failed"));
+    onEmployeeCreated(ok);
+    onEmployeeCreated(broken);
+
+    const result = await createEmployee(
+      ORG_ID,
+      { name: "Hooked", email: "hook@example.com", departmentId: "d1", designationId: "de1", dateOfJoining: "2026-01-01" },
+      ACTOR,
+    );
+
+    expect(result.id).toBe("emp_1");
+    expect(ok).toHaveBeenCalledWith(ORG_ID, "emp_1", ACTOR);
+    expect(broken).toHaveBeenCalled();
   });
 });
