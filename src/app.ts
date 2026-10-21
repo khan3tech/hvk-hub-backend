@@ -28,6 +28,7 @@ import * as exit from "./modules/exit/service.js";
 import { registerJob } from "./lib/scheduler.js";
 import { statutoryRouter } from "./modules/statutory/routes.js";
 import { analyticsRouter } from "./modules/analytics/routes.js";
+import { performanceRouter } from "./modules/performance/routes.js";
 import { calculateStatutory } from "./modules/statutory/service.js";
 import { setStatutoryCalculator } from "./modules/payroll/service.js";
 
@@ -83,6 +84,7 @@ export function createApp() {
   app.use("/api/exit", exitRouter);
   app.use("/api/statutory", statutoryRouter);
   app.use("/api/analytics", analyticsRouter);
+  app.use("/api/performance", performanceRouter);
 
   if (process.env.NODE_ENV !== "production") {
     const openApiDocument = generateOpenApiDocument();

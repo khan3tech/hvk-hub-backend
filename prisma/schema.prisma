@@ -781,6 +781,12 @@ model Goal {
   status      GoalStatus @default(PENDING_APPROVAL)
   progress    String?
   createdAt   DateTime   @default(now())
+  // 012: progress %, the manager's change request, and approval attribution
+  progressPercent   Int?
+  changeRequestNote String?
+  approvedById      String?
+  approvedAt        DateTime?
+  updatedAt         DateTime   @default(now()) @updatedAt
 
   @@index([orgId, employeeId, status])
 }
@@ -794,6 +800,8 @@ model ReviewCycle {
   scopeType    ReviewScopeType @default(COMPANY)
   departmentId String?
   department   Department?     @relation(fields: [departmentId], references: [id])
+  createdById  String?
+  createdAt    DateTime        @default(now())
 
   reviews Review[]
 
@@ -814,6 +822,11 @@ model Review {
   employeeComments String?
   status           ReviewStatus @default(IN_PROGRESS)
   finalizedAt      DateTime?
+  // 012 FR-011: reviewer follows the reporting line until final; FR-007 HR corrections
+  previousManagerId String?
+  managerChangedAt  DateTime?
+  correctedAt       DateTime?
+  createdAt         DateTime     @default(now())
 
   @@unique([employeeId, reviewCycleId])
   @@index([orgId, reviewCycleId, status])
