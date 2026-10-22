@@ -41,6 +41,8 @@ import { devicesRouter } from "./modules/devices/routes.js";
 import { careersRouter } from "./modules/careers/routes.js";
 import { referralsRouter } from "./modules/referrals/routes.js";
 import { bgvRouter } from "./modules/bgv/routes.js";
+import { learningRouter } from "./modules/learning/routes.js";
+import * as learning from "./modules/learning/service.js";
 import * as bgv from "./modules/bgv/service.js";
 import { setApplicationDecorator, setHireGate } from "./modules/recruitment/service.js";
 import * as referrals from "./modules/referrals/service.js";
@@ -60,6 +62,7 @@ import { setStatutoryCalculator } from "./modules/payroll/service.js";
 // Cross-module extension points (Principle I): modules that build on Employee register here
 // rather than the employee module importing them.
 onEmployeeCreated(onboarding.onEmployeeCreated); // 007 FR-001
+onEmployeeCreated(learning.onEmployeeCreated); // 023 FR-007
 registerEmployeeDecorator("onboarding", onboarding.statusesFor); // 007 FR-007
 registerEmployeeDecorator("exit", exit.exitStatusFor); // 009 FR-004
 registerEmployeeDecorator("assets", assets.assetsDecorator); // 014 FR-004
@@ -141,6 +144,7 @@ export function createApp() {
   app.use("/api/public/careers", careersRouter); // 020: no authentication
   app.use("/api/referrals", referralsRouter);
   app.use("/api/bgv", bgvRouter);
+  app.use("/api/learning", learningRouter);
 
   if (process.env.NODE_ENV !== "production") {
     const openApiDocument = generateOpenApiDocument();
