@@ -45,6 +45,7 @@ import { bgvRouter } from "./modules/bgv/routes.js";
 import { learningRouter } from "./modules/learning/routes.js";
 import { successionRouter } from "./modules/succession/routes.js";
 import { brandingRouter, publicBrandingRouter } from "./modules/branding/routes.js";
+import { assistantRouter } from "./modules/assistant/routes.js";
 import * as branding from "./modules/branding/service.js";
 import * as succession from "./modules/succession/service.js";
 import * as learning from "./modules/learning/service.js";
@@ -161,6 +162,7 @@ export function createApp() {
   app.use("/api/succession", successionRouter);
   app.use("/api/branding", brandingRouter);
   app.use("/api/public/branding", publicBrandingRouter); // 025: no authentication
+  app.use("/api/assistant", assistantRouter);
 
   if (process.env.NODE_ENV !== "production") {
     const openApiDocument = generateOpenApiDocument();

@@ -1557,6 +1557,22 @@ model AssistantInteraction {
   @@index([orgId, createdAt])
 }
 
+// 027 FR-004: HR-authored policy answers the assistant may quote, optionally pointing at the
+// published 008 policy document they summarise. Read fresh on every question (FR-009).
+model AssistantKnowledgeArticle {
+  id          String   @id @default(cuid())
+  orgId       String
+  title       String
+  body        String
+  keywords    Json
+  policyId    String?
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
+
+  @@index([orgId])
+}
+
 // 019 FR-005: replay-safe retries — the first response to an Idempotency-Key is stored and
 // returned again for any retry with the same key from the same caller.
 model IdempotencyRecord {
