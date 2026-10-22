@@ -99,9 +99,34 @@ describe("statutory — payroll calculator (FR-003/004)", () => {
       prorationRatio: 1,
       earnings: { basic: 50000, hra: 20000, special: 10000 },
       fullMonth: full,
+      country: null,
+      homeCountry: null,
     });
 
     expect(lines).toEqual([{ groupId: "g_pf", componentId: "pf", name: "Retirement fund", amount: 6000 }]);
+  });
+});
+
+describe("statutory — countries (026 FR-003, SC-003)", () => {
+  it("applies country-tagged components only to that country; untagged ones to the home country", () => {
+    expect(service.appliesTo(null, null, null)).toBe(true); // single-country org
+    expect(service.appliesTo("US", null, null)).toBe(true);
+    expect(service.appliesTo(null, "IN", "IN")).toBe(true);
+    expect(service.appliesTo(null, "US", "IN")).toBe(false);
+    expect(service.appliesTo("US", "US", "IN")).toBe(true);
+    expect(service.appliesTo("US", "GB", "IN")).toBe(false);
+  });
+
+  it("filters the calculation to the employee's country", async () => {
+    vi.mocked(repo.listVersions).mockResolvedValue([
+      version({ id: "in", groupId: "g_in", name: "Home tax", ruleType: "FLAT", ruleConfig: { amount: 100 } }),
+      version({ id: "us", groupId: "g_us", name: "US tax", ruleType: "FLAT", ruleConfig: { amount: 300 }, country: "US" }),
+    ]);
+    vi.mocked(repo.listExemptions).mockResolvedValue([]);
+    const base = { orgId: ORG, employeeId: "e", periodStart: new Date("2026-09-01"), periodEnd: new Date("2026-09-30"), prorationRatio: 1, earnings: { basic: 1 }, fullMonth: { basic: 1, hra: 0, gross: 1 } };
+    expect((await service.calculateStatutory({ ...base, country: "US", homeCountry: "IN" })).map((l) => l.name)).toEqual(["US tax"]);
+    expect((await service.calculateStatutory({ ...base, country: "IN", homeCountry: "IN" })).map((l) => l.name)).toEqual(["Home tax"]);
+    expect(await service.statutoryCoverage(ORG, "GB", "IN", new Date("2026-09-30"))).toBe(false);
   });
 });
 

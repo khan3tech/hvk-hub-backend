@@ -8,14 +8,9 @@ import { notifyEmployees } from "../notifications/service.js";
 import { getUnpaidLeaveDaysForPeriod } from "../attendance/service.js";
 import * as repo from "./repository.js";
 import { renderPayslipPdf, type PayslipBranding } from "./pdf.js";
+import { resolveContext } from "./global.js";
 import type { AccessTokenPayload } from "../../lib/jwt.js";
 import type { SetSalaryStructureRequest, RunPayrollRequest } from "./schema.js";
-
-// Org's single default currency for v0.1 (single-org, single-currency scope — see spec
-// Assumptions). Set explicitly on every SalaryStructure/Payslip rather than left `null`, since
-// 026-global-multi-currency-payroll's ReportingCurrencyConfig lookup isn't built yet; this is
-// the fallback value that config would resolve to for this org anyway.
-const DEFAULT_CURRENCY = "INR";
 
 function startOfDay(date: moment.MomentInput): Date {
   return moment.utc(date).startOf("day").toDate();
@@ -85,14 +80,18 @@ export async function setSalaryStructure(
     throw new DomainError("NOT_FOUND", "Employee not found.", 404);
   }
 
+  // 026 FR-004: amounts are in the employee's payroll currency on the effective date (null when a
+  // multi-country org hasn't assigned one yet; payroll then blocks until it's set).
+  const effectiveFrom = startOfDay(input.effectiveFrom);
+  const context = await resolveContext(orgId, employeeId, effectiveFrom);
   const structure = await repo.createSalaryStructure({
     orgId,
     employeeId,
     basic: input.basic,
     hra: input.hra,
     allowances: input.allowances,
-    effectiveFrom: startOfDay(input.effectiveFrom),
-    currency: DEFAULT_CURRENCY,
+    effectiveFrom,
+    currency: context.currency,
   });
 
   await logActivity({
@@ -149,9 +148,20 @@ export type StatutoryCalculator = (input: {
   prorationRatio: number;
   earnings: Record<string, number>; // already prorated
   fullMonth: { basic: number; hra: number; gross: number }; // un-prorated monthly amounts
+  // 026 FR-003: the employee's payroll country and the org's home country (both null for a
+  // single-country org, where every component applies).
+  country: string | null;
+  homeCountry: string | null;
 }) => Promise<StatutoryLine[]>;
 
 let statutoryCalculator: StatutoryCalculator | null = null;
+
+// 026 FR-006: whether any statutory component applies to a country on a date (registered by 010).
+export type StatutoryCoverage = (orgId: string, country: string, homeCountry: string | null, asOf: Date) => Promise<boolean>;
+let statutoryCoverage: StatutoryCoverage | null = null;
+export function setStatutoryCoverage(coverage: StatutoryCoverage | null): void {
+  statutoryCoverage = coverage;
+}
 
 // 021: one-off earnings (e.g. referral bonuses) HR scheduled for a period. Each line becomes its
 // own earning on the payslip (not prorated); markIncluded runs once the payslip is saved.
@@ -174,7 +184,15 @@ export function setStatutoryCalculator(calculator: StatutoryCalculator | null): 
   statutoryCalculator = calculator;
 }
 
+export type SkipReason =
+  | "NO_SALARY_STRUCTURE"
+  | "NO_PAYROLL_COUNTRY" // 026 FR-002
+  | "CURRENCY_MISMATCH" // 026: salary structure is in another currency than the employee's assignment
+  | "NO_STATUTORY_COMPONENTS_FOR_COUNTRY"; // 026 FR-006
+
 interface PayslipComputation {
+  country: string | null;
+  currency: string;
   earnings: Record<string, number>;
   deductions: Record<string, number>;
   statutoryDeductions: StatutoryLine[];
@@ -187,12 +205,22 @@ async function computePayslipForEmployee(
   employee: { id: string; dateOfJoining: Date; status: string },
   periodMonth: number,
   periodYear: number,
-): Promise<PayslipComputation | { skipped: "NO_SALARY_STRUCTURE" }> {
+): Promise<PayslipComputation | { skipped: SkipReason }> {
   const { periodStart, periodEnd } = periodBounds(periodMonth, periodYear);
 
   const structure = await repo.findEffectiveSalaryStructure(orgId, employee.id, periodEnd);
   if (!structure) {
     return { skipped: "NO_SALARY_STRUCTURE" };
+  }
+
+  // 026: the employee's country/currency at period end. Payslips are never produced under an
+  // assumed country (FR-002) or by relabelling amounts entered in another currency.
+  const context = await resolveContext(orgId, employee.id, periodEnd);
+  if ("missing" in context) return { skipped: "NO_PAYROLL_COUNTRY" };
+  if (structure.currency && structure.currency !== context.currency) return { skipped: "CURRENCY_MISMATCH" };
+  if (context.mode === "MULTI" && statutoryCalculator && statutoryCoverage &&
+      !(await statutoryCoverage(orgId, context.country, context.homeCountry, periodEnd))) {
+    return { skipped: "NO_STATUTORY_COMPONENTS_FOR_COUNTRY" };
   }
 
   // research.md R3: clip the active range to joining/offboarding dates within the period.
@@ -247,6 +275,8 @@ async function computePayslipForEmployee(
         prorationRatio,
         earnings,
         fullMonth: { basic: structure.basic, hra: structure.hra, gross: fullMonthGross },
+        country: context.country,
+        homeCountry: context.homeCountry,
       })
     : [];
 
@@ -254,7 +284,7 @@ async function computePayslipForEmployee(
     Object.values(deductions).reduce((sum, v) => sum + v, 0) +
     statutoryDeductions.reduce((sum, line) => sum + line.amount, 0);
 
-  return { earnings, deductions, statutoryDeductions, netPay: grossEarnings - totalDeductions, oneOffIds: oneOffs.map((o) => o.id) };
+  return { country: context.country, currency: context.currency, earnings, deductions, statutoryDeductions, netPay: grossEarnings - totalDeductions, oneOffIds: oneOffs.map((o) => o.id) };
 }
 
 export async function runPayroll(
@@ -267,6 +297,8 @@ export async function runPayroll(
 
   const skipped: Array<{ employeeId: string; reason: string }> = [];
   let payslipCount = 0;
+  // 026 US2.2: totals labelled by country and currency, never blended across currencies.
+  const byCountry = new Map<string, { country: string | null; currency: string; payslipCount: number; netPay: number }>();
 
   for (const employee of employees) {
     const result = await computePayslipForEmployee(orgId, employee, input.periodMonth, input.periodYear);
@@ -290,9 +322,15 @@ export async function runPayroll(
         statutoryDeductions: result.statutoryDeductions as never,
         netPay: result.netPay,
         generatedAt: moment().toDate(),
-        currency: DEFAULT_CURRENCY,
+        currency: result.currency,
+        country: result.country,
       },
     });
+    const key = `${result.country ?? ""}|${result.currency}`;
+    const group = byCountry.get(key) ?? { country: result.country, currency: result.currency, payslipCount: 0, netPay: 0 };
+    group.payslipCount += 1;
+    group.netPay += result.netPay;
+    byCountry.set(key, group);
     if (oneOffProvider && result.oneOffIds.length > 0) {
       await oneOffProvider.markIncluded(orgId, result.oneOffIds, input.periodMonth, input.periodYear);
     }
@@ -307,6 +345,9 @@ export async function runPayroll(
     entityId: `${input.periodYear}-${input.periodMonth}`,
     after: { periodMonth: input.periodMonth, periodYear: input.periodYear, payslipCount, skipped },
   });
+  const countries = [...byCountry.values()]
+    .map((g) => ({ ...g, netPay: Math.round(g.netPay * 100) / 100 }))
+    .sort((a, b) => (a.country ?? "").localeCompare(b.country ?? "") || a.currency.localeCompare(b.currency));
 
   // 006 FR-003: one summary to the HR/Admin who ran it (never one per payslip — Assumptions).
   if (actor.employeeId) {
@@ -325,7 +366,7 @@ export async function runPayroll(
     });
   }
 
-  return { periodMonth: input.periodMonth, periodYear: input.periodYear, payslipCount, skipped };
+  return { periodMonth: input.periodMonth, periodYear: input.periodYear, payslipCount, skipped, byCountry: countries };
 }
 
 export async function getPayslipsOrgWide(

@@ -107,3 +107,46 @@ export function writeActivityLog(params: {
     },
   });
 }
+
+// --- 026-global-multi-currency-payroll ---
+
+export function findCurrencySettings(orgId: string) {
+  return prisma.payrollCurrencySettings.findUnique({ where: { orgId } });
+}
+
+export function upsertCurrencySettings(orgId: string, data: { defaultCountry?: string | null; defaultCurrency?: string | null; reportingCurrency?: string | null }) {
+  return prisma.payrollCurrencySettings.upsert({ where: { orgId }, create: { orgId, ...data }, update: data });
+}
+
+export function countPayrollAssignments(orgId: string) {
+  return prisma.payrollAssignment.count({ where: { orgId } });
+}
+
+export function createPayrollAssignment(data: { orgId: string; employeeId: string; country: string; currency: string; effectiveFrom: Date; createdById: string | null }) {
+  return prisma.payrollAssignment.create({ data });
+}
+
+export function listPayrollAssignments(orgId: string, employeeId: string) {
+  return prisma.payrollAssignment.findMany({ where: { orgId, employeeId }, orderBy: [{ effectiveFrom: "asc" }, { createdAt: "asc" }] });
+}
+
+// Same lookup rule as salary structures: latest effectiveFrom on or before the date (ties: newest).
+export function findEffectivePayrollAssignment(orgId: string, employeeId: string, asOf: Date) {
+  return prisma.payrollAssignment.findFirst({
+    where: { orgId, employeeId, effectiveFrom: { lte: asOf } },
+    orderBy: [{ effectiveFrom: "desc" }, { createdAt: "desc" }],
+  });
+}
+
+export function upsertExchangeRate(data: { orgId: string; fromCurrency: string; toCurrency: string; rate: number; periodMonth: number; periodYear: number; recordedById: string | null }) {
+  const { orgId, fromCurrency, toCurrency, periodMonth, periodYear } = data;
+  return prisma.exchangeRate.upsert({
+    where: { orgId_fromCurrency_toCurrency_periodMonth_periodYear: { orgId, fromCurrency, toCurrency, periodMonth, periodYear } },
+    create: data,
+    update: { rate: data.rate, recordedById: data.recordedById },
+  });
+}
+
+export function listExchangeRates(orgId: string, where: Prisma.ExchangeRateWhereInput = {}) {
+  return prisma.exchangeRate.findMany({ where: { orgId, ...where }, orderBy: [{ periodYear: "desc" }, { periodMonth: "desc" }, { fromCurrency: "asc" }] });
+}

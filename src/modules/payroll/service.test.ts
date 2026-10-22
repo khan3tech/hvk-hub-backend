@@ -28,6 +28,10 @@ vi.mock("../notifications/service.js", () => ({
 vi.mock("../attendance/service.js", () => ({
   getUnpaidLeaveDaysForPeriod: vi.fn(),
 }));
+// 026: a single-country org (no settings, no assignments) — the v0.1 behaviour.
+vi.mock("./global.js", () => ({
+  resolveContext: vi.fn().mockResolvedValue({ mode: "SINGLE", country: null, homeCountry: null, currency: "INR" }),
+}));
 
 const repo = await import("./repository.js");
 const employeeService = await import("../employee/service.js");

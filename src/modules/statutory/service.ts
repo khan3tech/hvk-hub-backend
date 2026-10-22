@@ -5,7 +5,7 @@ import moment from "moment";
 import { Prisma } from "@prisma/client";
 import { DomainError } from "../../middleware/errorHandler.js";
 import { getEmployeeSummary } from "../employee/service.js";
-import { getPayslipsOrgWide, type StatutoryCalculator, type StatutoryLine } from "../payroll/service.js";
+import { getPayslipsOrgWide, type StatutoryCalculator, type StatutoryCoverage, type StatutoryLine } from "../payroll/service.js";
 import { computeStatutoryAmount } from "./calculate.js";
 import * as repo from "./repository.js";
 import type { AccessTokenPayload } from "../../lib/jwt.js";
@@ -47,7 +47,7 @@ export async function createComponent(orgId: string, input: CreateComponentReque
     name: input.name,
     ruleType: input.ruleType,
     ruleConfig: input.ruleConfig as Prisma.InputJsonValue,
-    country: input.country ?? null,
+    country: input.country?.toUpperCase() ?? null,
     effectiveFrom: moment.utc(input.effectiveFrom).toDate(),
     createdById: actor.employeeId,
   });
@@ -133,6 +133,19 @@ export async function removeExemption(orgId: string, id: string, actor: AccessTo
 
 // --- Payroll integration (US2) — registered with payroll.setStatutoryCalculator() in app.ts ---
 
+// 026 FR-003/SC-003: a component tagged with a country applies only to that country; untagged
+// components belong to the org's home country (or to everyone in a single-country org).
+export function appliesTo(componentCountry: string | null, country: string | null, homeCountry: string | null) {
+  if (country === null) return true;
+  return componentCountry === null ? country === homeCountry : componentCountry === country;
+}
+
+// 026 FR-006: registered with payroll.setStatutoryCoverage() in app.ts.
+export const statutoryCoverage: StatutoryCoverage = async (orgId, country, homeCountry, asOf) => {
+  const versions = await repo.listVersions(orgId, { effectiveFrom: { lte: asOf } });
+  return versionsInEffect(versions, asOf).some((v) => appliesTo(v.country, country, homeCountry));
+};
+
 // FR-004/FR-010: rules in effect at period end, minus the employee's exemptions, on prorated pay.
 export const calculateStatutory: StatutoryCalculator = async (input) => {
   const [versions, exemptions] = await Promise.all([
@@ -145,7 +158,7 @@ export const calculateStatutory: StatutoryCalculator = async (input) => {
 
   const lines: StatutoryLine[] = [];
   for (const v of versionsInEffect(versions, input.periodEnd)) {
-    if (exempt.has(v.groupId)) continue;
+    if (exempt.has(v.groupId) || !appliesTo(v.country, input.country, input.homeCountry)) continue;
     const amount = computeStatutoryAmount({ ruleType: v.ruleType, ruleConfig: v.ruleConfig } as Rule, {
       prorated,
       fullMonth: input.fullMonth,

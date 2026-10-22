@@ -61,8 +61,9 @@ import { onOrganizationDeleted, organizationDirectory } from "./modules/organiza
 import { assetsRouter } from "./modules/assets/routes.js";
 import * as assets from "./modules/assets/service.js";
 import { expensesRouter } from "./modules/expenses/routes.js";
-import { calculateStatutory } from "./modules/statutory/service.js";
-import { setPayslipBrandingProvider, setStatutoryCalculator } from "./modules/payroll/service.js";
+import { calculateStatutory, statutoryCoverage } from "./modules/statutory/service.js";
+import { setPayslipBrandingProvider, setStatutoryCalculator, setStatutoryCoverage } from "./modules/payroll/service.js";
+import { payrollGlobalRouter } from "./modules/payroll/globalRoutes.js";
 
 // Cross-module extension points (Principle I): modules that build on Employee register here
 // rather than the employee module importing them.
@@ -78,6 +79,7 @@ setPayslipBrandingProvider(branding.brandingAssets); // 025 FR-006
 onOrganizationDeleted(branding.clearBranding); // 025 FR-010
 exit.registerExitTaskGuard("ASSET_RETURN", assets.assetReturnGuard); // 014 US2.3
 setStatutoryCalculator(calculateStatutory); // 010 FR-004
+setStatutoryCoverage(statutoryCoverage); // 026 FR-006
 setLoginPolicy(loginPolicy); // 013 SSO enforcement + MFA
 setOrganizationDirectory(organizationDirectory); // 015 org slugs + suspension
 setPushDispatcher(dispatchPush); // 019 FR-006
@@ -133,6 +135,7 @@ export function createApp() {
   app.use("/api/leave-types", leaveTypeRouter);
   app.use("/api/holidays", holidayRouter);
   app.use("/api/payroll", payrollRouter);
+  app.use("/api/payroll", payrollGlobalRouter); // 026
   app.use("/api/recruitment", recruitmentRouter);
   app.use("/api/notifications", notificationsRouter);
   app.use("/api/onboarding", onboardingRouter);

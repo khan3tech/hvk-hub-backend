@@ -150,9 +150,8 @@ model Employee {
   dateOfJoining DateTime
   status        EmployeeStatus @default(ACTIVE)
 
-  // 026-global-multi-currency-payroll — null = org's single default (no extra burden, FR-011)
-  payrollCountry  String?
-  payrollCurrency String?
+  // 026-global-multi-currency-payroll: effective-dated country/currency (FR-001, US1.3)
+  payrollAssignments PayrollAssignment[]
 
   user              User?
   attendanceRecords Attendance[]
@@ -348,6 +347,8 @@ model Payslip {
   // 026-global-multi-currency-payroll — the currency netPay/earnings/deductions are expressed
   // in; immutable once generated even if the employee's currency assignment later changes
   currency String?
+  // 026 FR-007: the payroll country the payslip was computed under (null = single-country org)
+  country  String?
 
   @@unique([employeeId, periodMonth, periodYear])
 }
@@ -1493,22 +1494,46 @@ model OrganizationBranding {
 // Employee.payrollCountry/payrollCurrency, SalaryStructure.currency, Payslip.currency, and
 // StatutoryComponent.country are declared alongside their v0.1/v1.1 models above.
 
+// FR-001/US1.3: which country's rules and which currency apply to an employee from a date on.
+model PayrollAssignment {
+  id            String   @id @default(cuid())
+  orgId         String
+  employeeId    String
+  employee      Employee @relation(fields: [employeeId], references: [id])
+  country       String
+  currency      String
+  effectiveFrom DateTime @db.Date
+  createdById   String?
+  createdAt     DateTime @default(now())
+
+  @@index([orgId, employeeId, effectiveFrom])
+}
+
+// FR-008: 1 fromCurrency = rate toCurrency for one period; re-recording replaces it.
 model ExchangeRate {
-  id           String @id @default(cuid())
+  id           String   @id @default(cuid())
   orgId        String
   fromCurrency String
   toCurrency   String
   rate         Float
   periodMonth  Int
   periodYear   Int
+  recordedById String?
+  updatedAt    DateTime @default(now()) @updatedAt
 
   @@unique([orgId, fromCurrency, toCurrency, periodMonth, periodYear])
 }
 
-model ReportingCurrencyConfig {
-  id       String @id @default(cuid())
-  orgId    String @unique
-  currency String
+// Per-organization defaults. Everything optional: a single-country org needs none (FR-011).
+model PayrollCurrencySettings {
+  id                String   @id @default(cuid())
+  orgId             String   @unique
+  // The org's home country/currency: employees without an assignment fall back to these, and
+  // statutory components with no country belong to the home country.
+  defaultCountry    String?
+  defaultCurrency   String?
+  reportingCurrency String?
+  updatedAt         DateTime @default(now()) @updatedAt
 }
 
 // ============================================================================
