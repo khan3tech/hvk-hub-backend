@@ -58,7 +58,7 @@ describe("learning — assignment (FR-002, FR-010)", () => {
     vi.mocked(repo.employeesWithOpenAssignment).mockResolvedValue(new Set(["e2"]));
     const out = await service.assign(ORG, "c1", { audience: "DEPARTMENT", departmentId: "d1", dueDate: "2026-12-01" }, HR);
     expect(out).toMatchObject({ assigned: 1, alreadyAssigned: 1 });
-    expect(vi.mocked(repo.createAssignments).mock.calls[0][0]).toEqual([expect.objectContaining({ employeeId: "e1", ruleId: "r1" })]);
+    expect(vi.mocked(repo.createAssignments).mock.calls[0]![0]).toEqual([expect.objectContaining({ employeeId: "e1", ruleId: "r1" })]);
   });
 
   it("refuses archived courses", async () => {
@@ -82,9 +82,9 @@ describe("learning — new hires (FR-007, SC-004)", () => {
     ] as never);
     await service.onEmployeeCreated(ORG, "new", HR);
     expect(repo.createAssignments).toHaveBeenCalledTimes(1);
-    const row = vi.mocked(repo.createAssignments).mock.calls[0][0] as Array<{ courseId: string; dueDate: Date }>;
-    expect(row[0].courseId).toBe("c1");
-    expect(row[0].dueDate.getTime()).toBeGreaterThan(Date.now());
+    const row = vi.mocked(repo.createAssignments).mock.calls[0]![0] as Array<{ courseId: string; dueDate: Date }>;
+    expect(row[0]!.courseId).toBe("c1");
+    expect(row[0]!.dueDate.getTime()).toBeGreaterThan(Date.now());
   });
 });
 
@@ -118,7 +118,7 @@ describe("learning — compliance dashboard (FR-008)", () => {
     ]);
     const { courses } = await service.complianceDashboard(ORG);
     expect(courses).toHaveLength(1);
-    expect(courses[0]).toMatchObject({ assigned: 2, completed: 1, outstanding: 1 });
-    expect(courses[0].outstandingEmployees[0]).toMatchObject({ assignmentId: "new", overdue: true });
+    expect(courses[0]!).toMatchObject({ assigned: 2, completed: 1, outstanding: 1 });
+    expect(courses[0]!.outstandingEmployees[0]).toMatchObject({ assignmentId: "new", overdue: true });
   });
 });
