@@ -1117,6 +1117,12 @@ model Survey {
   departmentId String?
   department   Department?        @relation(fields: [departmentId], references: [id])
   sentAt       DateTime?
+  // 018: audience snapshot at send (FR-010), anonymity threshold (FR-005), lifecycle
+  audienceEmployeeIds Json?
+  audienceSize        Int      @default(0)
+  minResponses        Int      @default(5)
+  createdById         String?
+  closedAt            DateTime?
 
   questions     SurveyQuestion[]
   participation SurveyParticipation[]

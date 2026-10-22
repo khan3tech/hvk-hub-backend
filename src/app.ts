@@ -35,6 +35,7 @@ import { setLoginPolicy, setOrganizationDirectory } from "./modules/auth/service
 import { platformRouter } from "./modules/organizations/routes.js";
 import { orgChartRouter } from "./modules/orgchart/routes.js";
 import { helpdeskRouter } from "./modules/helpdesk/routes.js";
+import { surveysRouter } from "./modules/surveys/routes.js";
 import { organizationDirectory } from "./modules/organizations/service.js";
 import { assetsRouter } from "./modules/assets/routes.js";
 import * as assets from "./modules/assets/service.js";
@@ -106,6 +107,7 @@ export function createApp() {
   app.use("/api/platform", platformRouter); // 015 super-admin tier
   app.use("/api/org-chart", orgChartRouter);
   app.use("/api/helpdesk", helpdeskRouter);
+  app.use("/api/surveys", surveysRouter);
 
   if (process.env.NODE_ENV !== "production") {
     const openApiDocument = generateOpenApiDocument();
