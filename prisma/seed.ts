@@ -163,14 +163,12 @@ async function main() {
     create: { orgId: ORG_ID, name: "Unpaid", isPaid: false, defaultDays: 30 },
   });
 
-  // Org's default reporting currency (INR for this org). 026-global-multi-currency-payroll's
-  // own lookup logic isn't built yet — 004-payroll's service.ts hardcodes the same "INR"
-  // default directly rather than reading this row today, but seeding it now means 026 finds
-  // the correct value already in place when it starts reading from here instead.
-  await prisma.reportingCurrencyConfig.upsert({
+  // 026: the org's currency (INR) for payslips and reporting. No defaultCountry, so the seeded
+  // org stays single-country: no payroll country assignments needed (026 FR-011).
+  await prisma.payrollCurrencySettings.upsert({
     where: { orgId: ORG_ID },
     update: {},
-    create: { orgId: ORG_ID, currency: "INR" },
+    create: { orgId: ORG_ID, defaultCurrency: "INR", reportingCurrency: "INR" },
   });
 
   console.log(`Seeded org "${ORG_ID}" with 4 users (password: ${SEED_PASSWORD}):`);
