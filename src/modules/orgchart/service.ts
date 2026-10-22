@@ -13,18 +13,27 @@ type Person = Awaited<ReturnType<typeof listActiveEmployeeSummaries>>[number];
 
 const isPrivileged = (actor: AccessTokenPayload) => actor.role === "HR" || actor.role === "ADMIN";
 
-async function load(orgId: string) {
-  const [people, departments, designations, topId] = await Promise.all([
+// 024: employees holding a critical position, shown to HR/Admin only. Registered in app.ts.
+type CriticalPositions = (orgId: string) => Promise<Set<string>>;
+let criticalPositions: CriticalPositions = async () => new Set();
+export function setCriticalPositionsProvider(fn: CriticalPositions): void {
+  criticalPositions = fn;
+}
+
+async function load(orgId: string, actor?: AccessTokenPayload) {
+  const [people, departments, designations, topId, critical] = await Promise.all([
     listActiveEmployeeSummaries(orgId), // FR-005: offboarded excluded
     listDepartments(orgId),
     listDesignations(orgId),
     getTopEmployeeId(orgId),
+    actor && isPrivileged(actor) ? criticalPositions(orgId) : Promise.resolve(new Set<string>()),
   ]);
   return {
     forest: buildForest<Person>(people, (p) => p.name.toLowerCase()),
     dept: new Map(departments.map((d) => [d.id, d])),
     title: new Map(designations.map((d) => [d.id, d.title])),
     topId,
+    critical,
   };
 }
 
@@ -47,7 +56,7 @@ function node(ctx: Ctx, p: Person, actor: AccessTokenPayload) {
     isMe: actor.employeeId === p.id,
     ...(canSeeContact ? { email: p.email } : {}),
     // FR-008: HR/Admin-only overlay
-    ...(isPrivileged(actor) ? { orphan: !managerActive && p.id !== ctx.topId } : {}),
+    ...(isPrivileged(actor) ? { orphan: !managerActive && p.id !== ctx.topId, criticalPosition: ctx.critical.has(p.id) } : {}),
   };
 }
 
@@ -63,7 +72,7 @@ function subtree(ctx: Ctx, p: Person, actor: AccessTokenPayload, depth: number):
 
 // FR-001/FR-006: roots (designated top first) expanded to a shallow depth; the rest lazily.
 export async function getChart(orgId: string, actor: AccessTokenPayload, depth = DEFAULT_DEPTH) {
-  const ctx = await load(orgId);
+  const ctx = await load(orgId, actor);
   const d = Math.min(Math.max(depth, 0), MAX_DEPTH);
   const roots = [...ctx.forest.roots].sort((a, b) => Number(b.id === ctx.topId) - Number(a.id === ctx.topId));
   return {
@@ -78,7 +87,7 @@ export async function getChart(orgId: string, actor: AccessTokenPayload, depth =
 
 // FR-002: expand one branch.
 export async function getChildren(orgId: string, employeeId: string, actor: AccessTokenPayload, depth = 0) {
-  const ctx = await load(orgId);
+  const ctx = await load(orgId, actor);
   const p = ctx.forest.byId.get(employeeId);
   if (!p) throw new DomainError("NOT_FOUND", "Employee not found on the org chart.", 404);
   return (ctx.forest.children.get(employeeId) ?? []).map((c) => subtree(ctx, c, actor, Math.min(depth, MAX_DEPTH)));
@@ -88,7 +97,7 @@ export async function getChildren(orgId: string, employeeId: string, actor: Acce
 export async function search(orgId: string, q: string, actor: AccessTokenPayload, limit = 20) {
   const term = q.trim().toLowerCase();
   if (term.length < 1) return [];
-  const ctx = await load(orgId);
+  const ctx = await load(orgId, actor);
   return [...ctx.forest.byId.values()]
     .filter((p) => p.name.toLowerCase().includes(term))
     .sort((a, b) => Number(!a.name.toLowerCase().startsWith(term)) - Number(!b.name.toLowerCase().startsWith(term)) || a.name.localeCompare(b.name))

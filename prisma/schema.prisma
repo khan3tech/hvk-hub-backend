@@ -1417,11 +1417,16 @@ enum ReadinessLevel {
 }
 
 model SuccessionPlan {
-  id                 String   @id @default(cuid())
+  id                 String    @id @default(cuid())
   orgId              String
-  positionEmployeeId String   @unique
-  positionEmployee   Employee @relation(fields: [positionEmployeeId], references: [id])
-  createdAt          DateTime @default(now())
+  positionEmployeeId String    @unique
+  positionEmployee   Employee  @relation(fields: [positionEmployeeId], references: [id])
+  createdAt          DateTime  @default(now())
+  // FR-001: unmarking keeps the plan and its history (FR-006); re-marking reuses it.
+  isCritical         Boolean   @default(true)
+  markedById         String?
+  markedAt           DateTime  @default(now())
+  unmarkedAt         DateTime?
 
   candidates SuccessionCandidate[]
 
@@ -1438,9 +1443,32 @@ model SuccessionCandidate {
   readinessLevel      ReadinessLevel
   isValid             Boolean        @default(true)
   updatedAt           DateTime       @updatedAt
+  createdAt           DateTime       @default(now())
+  addedById           String?
+  // FR-005: why and when the entry stopped being viable (offboarded, or removed by HR).
+  invalidReason       String?
+  invalidatedAt       DateTime?
 
+  readinessChanges SuccessionReadinessChange[]
+
+  @@unique([successionPlanId, candidateEmployeeId])
   @@index([successionPlanId])
   @@index([candidateEmployeeId])
+}
+
+// FR-004: every readiness level a successor has had, with who set it and when.
+model SuccessionReadinessChange {
+  id          String              @id @default(cuid())
+  orgId       String
+  candidateId String
+  candidate   SuccessionCandidate @relation(fields: [candidateId], references: [id])
+  fromLevel   ReadinessLevel?
+  toLevel     ReadinessLevel
+  note        String?
+  changedById String?
+  changedAt   DateTime            @default(now())
+
+  @@index([candidateId])
 }
 
 // ============================================================================

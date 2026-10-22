@@ -21,7 +21,7 @@ import { recruitmentRouter } from "./modules/recruitment/routes.js";
 import { notificationsRouter } from "./modules/notifications/routes.js";
 import { onboardingRouter } from "./modules/onboarding/routes.js";
 import { documentsRouter, policiesRouter, publicSignaturesRouter } from "./modules/documents/routes.js";
-import { onEmployeeCreated, registerEmployeeDecorator } from "./modules/employee/service.js";
+import { onEmployeeCreated, onEmployeeOffboarded, registerEmployeeDecorator } from "./modules/employee/service.js";
 import * as onboarding from "./modules/onboarding/service.js";
 import { exitRouter } from "./modules/exit/routes.js";
 import * as exit from "./modules/exit/service.js";
@@ -34,6 +34,7 @@ import { loginPolicy } from "./modules/identity/service.js";
 import { setLoginPolicy, setOrganizationDirectory } from "./modules/auth/service.js";
 import { platformRouter } from "./modules/organizations/routes.js";
 import { orgChartRouter } from "./modules/orgchart/routes.js";
+import { setCriticalPositionsProvider } from "./modules/orgchart/service.js";
 import { helpdeskRouter } from "./modules/helpdesk/routes.js";
 import { surveysRouter } from "./modules/surveys/routes.js";
 import { idempotency, purgeExpiredIdempotencyRecords } from "./middleware/idempotency.js";
@@ -42,6 +43,8 @@ import { careersRouter } from "./modules/careers/routes.js";
 import { referralsRouter } from "./modules/referrals/routes.js";
 import { bgvRouter } from "./modules/bgv/routes.js";
 import { learningRouter } from "./modules/learning/routes.js";
+import { successionRouter } from "./modules/succession/routes.js";
+import * as succession from "./modules/succession/service.js";
 import * as learning from "./modules/learning/service.js";
 import * as bgv from "./modules/bgv/service.js";
 import { setApplicationDecorator, setHireGate } from "./modules/recruitment/service.js";
@@ -66,6 +69,9 @@ onEmployeeCreated(learning.onEmployeeCreated); // 023 FR-007
 registerEmployeeDecorator("onboarding", onboarding.statusesFor); // 007 FR-007
 registerEmployeeDecorator("exit", exit.exitStatusFor); // 009 FR-004
 registerEmployeeDecorator("assets", assets.assetsDecorator); // 014 FR-004
+registerEmployeeDecorator("succession", succession.employeeDecoration); // 024 US1.1 (HR/Admin only)
+onEmployeeOffboarded(succession.onEmployeeOffboarded); // 024 FR-005
+setCriticalPositionsProvider(succession.criticalPositions); // 024: org chart overlay
 exit.registerExitTaskGuard("ASSET_RETURN", assets.assetReturnGuard); // 014 US2.3
 setStatutoryCalculator(calculateStatutory); // 010 FR-004
 setLoginPolicy(loginPolicy); // 013 SSO enforcement + MFA
@@ -145,6 +151,7 @@ export function createApp() {
   app.use("/api/referrals", referralsRouter);
   app.use("/api/bgv", bgvRouter);
   app.use("/api/learning", learningRouter);
+  app.use("/api/succession", successionRouter);
 
   if (process.env.NODE_ENV !== "production") {
     const openApiDocument = generateOpenApiDocument();

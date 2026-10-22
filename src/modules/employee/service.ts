@@ -80,22 +80,31 @@ export function onEmployeeCreated(hook: EmployeeCreatedHook): void {
   employeeCreatedHooks.add(hook);
 }
 
+// e.g. 024-succession-planning invalidates the leaver's successor entries (FR-005).
+type EmployeeOffboardedHook = (orgId: string, employeeId: string, actor: AccessTokenPayload) => Promise<void>;
+const employeeOffboardedHooks = new Set<EmployeeOffboardedHook>();
+
+export function onEmployeeOffboarded(hook: EmployeeOffboardedHook): void {
+  employeeOffboardedHooks.add(hook);
+}
+
 // Read-time decorations from other modules (007 onboardingStatus, 009 exitStatus): each returns
 // extra fields per employee id, merged into get/list responses. A failing decorator is skipped.
-type EmployeeDecorator = (orgId: string, employeeIds: string[]) => Promise<Map<string, Record<string, unknown>>>;
+// The requester lets a decorator restrict what it adds (024: HR/Admin-only flags).
+type EmployeeDecorator = (orgId: string, employeeIds: string[], requester?: AccessTokenPayload) => Promise<Map<string, Record<string, unknown>>>;
 const employeeDecorators = new Map<string, EmployeeDecorator>();
 
 export function registerEmployeeDecorator(name: string, decorator: EmployeeDecorator): void {
   employeeDecorators.set(name, decorator);
 }
 
-async function decorate<T extends { id: string }>(orgId: string, employees: T[]) {
+async function decorate<T extends { id: string }>(orgId: string, employees: T[], requester?: AccessTokenPayload) {
   if (employeeDecorators.size === 0 || employees.length === 0) return employees;
   const ids = employees.map((e) => e.id);
   const extras = new Map<string, Record<string, unknown>>(ids.map((id) => [id, {}]));
   for (const [name, decorator] of employeeDecorators) {
     try {
-      for (const [id, fields] of await decorator(orgId, ids)) Object.assign(extras.get(id) ?? {}, fields);
+      for (const [id, fields] of await decorator(orgId, ids, requester)) Object.assign(extras.get(id) ?? {}, fields);
     } catch (err) {
       logger.warn({ err, decorator: name }, "employee decorator failed");
     }
@@ -174,7 +183,7 @@ export async function createEmployee(
 
 export async function getEmployee(orgId: string, id: string, requester: AccessTokenPayload) {
   const employee = await getEmployeeScoped(orgId, id, requester);
-  const [decorated] = await decorate(orgId, [employee]);
+  const [decorated] = await decorate(orgId, [employee], requester);
   return decorated ?? employee;
 }
 
@@ -215,10 +224,10 @@ export async function listEmployeesForRequester(
   };
 
   if (requester.role === "ADMIN" || requester.role === "HR") {
-    return decorate(orgId, await repo.listEmployees(orgId, where));
+    return decorate(orgId, await repo.listEmployees(orgId, where), requester);
   }
   if (requester.role === "MANAGER") {
-    return decorate(orgId, await repo.listEmployees(orgId, { ...where, managerId: requester.employeeId }));
+    return decorate(orgId, await repo.listEmployees(orgId, { ...where, managerId: requester.employeeId }), requester);
   }
   // EMPLOYEE: self only
   if (!requester.employeeId) return [];
@@ -373,6 +382,14 @@ export async function offboardEmployee(orgId: string, id: string, actor: AccessT
     before: { status: "ACTIVE" },
     after: { status: "OFFBOARDED" },
   });
+
+  for (const hook of employeeOffboardedHooks) {
+    try {
+      await hook(orgId, id, actor);
+    } catch (err) {
+      logger.error({ err, employeeId: id }, "employee-offboarded hook failed");
+    }
+  }
 
   return { id: updated.id, status: updated.status };
 }
