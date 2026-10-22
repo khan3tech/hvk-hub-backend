@@ -1293,6 +1293,9 @@ model BackgroundCheck {
   application    Application              @relation(fields: [applicationId], references: [id])
   status         BackgroundCheckStatus    @default(PENDING)
   overallOutcome BackgroundCheckOutcome?
+  initiatedById  String?
+  createdAt      DateTime                 @default(now())
+  completedAt    DateTime?
 
   items BackgroundCheckItem[]
 
@@ -1307,6 +1310,9 @@ model BackgroundCheckItem {
   label             String
   result            BackgroundCheckItemResult?
   notes             String?
+  recordedById      String?
+  recordedAt        DateTime?
+  createdAt         DateTime                  @default(now())
 
   @@index([backgroundCheckId])
 }
@@ -1317,6 +1323,8 @@ model HireOverride {
   applicationId  String
   application    Application @relation(fields: [applicationId], references: [id])
   justification  String
+  // 022: INCOMPLETE_CHECK (FR-005) or FLAGGED_CHECK (FR-006)
+  kind           String      @default("FLAGGED_CHECK")
   overriddenById String
   overriddenBy   Employee    @relation(fields: [overriddenById], references: [id])
   createdAt      DateTime    @default(now())
@@ -1470,4 +1478,12 @@ model IdempotencyRecord {
   createdAt   DateTime @default(now())
 
   @@index([createdAt])
+}
+
+// 022: the org-wide default check items offered when a check is initiated.
+model BackgroundCheckSettings {
+  id           String   @id @default(cuid())
+  orgId        String   @unique
+  defaultItems Json
+  updatedAt    DateTime @default(now()) @updatedAt
 }

@@ -365,17 +365,35 @@ export async function getApplication(orgId: string, id: string, actor: AccessTok
   const application = await repo.findApplicationDetail(orgId, id);
   if (!application) throw new DomainError("NOT_FOUND", "Application not found.", 404);
   await assertCanViewPipeline(orgId, actor, application.jobPosting.departmentId);
-  return toApplication(application);
+  const extra = applicationDecorator ? await applicationDecorator(orgId, id, actor) : {};
+  return { ...toApplication(application), ...extra };
 }
 
 // FR-006/FR-007/FR-008: HR/Admin may move to any stage, including backward or out of a terminal
 // stage as a correction; a department Manager may move their own department's in-progress
 // applications only. Every change is audited.
+// 022: a gate consulted before any move to HIRED (registered in app.ts); it throws to block.
+type HireGate = (orgId: string, applicationId: string, justification: string | undefined, actor: AccessTokenPayload) => Promise<void>;
+let hireGate: HireGate | null = null;
+
+export function setHireGate(gate: HireGate | null): void {
+  hireGate = gate;
+}
+
+// 022: extra fields on an application view (e.g. background-check status), role-aware.
+type ApplicationDecorator = (orgId: string, applicationId: string, actor: AccessTokenPayload) => Promise<Record<string, unknown>>;
+let applicationDecorator: ApplicationDecorator | null = null;
+
+export function setApplicationDecorator(decorator: ApplicationDecorator | null): void {
+  applicationDecorator = decorator;
+}
+
 export async function moveApplicationStage(
   orgId: string,
   id: string,
   stage: ApplicationStage,
   actor: AccessTokenPayload,
+  justification?: string,
 ) {
   const application = await repo.findApplicationById(orgId, id);
   if (!application) throw new DomainError("NOT_FOUND", "Application not found.", 404);
@@ -399,6 +417,7 @@ export async function moveApplicationStage(
   }
 
   if (application.stage === stage) return toApplication(application);
+  if (stage === "HIRED" && hireGate) await hireGate(orgId, id, justification, actor);
 
   const updated = await repo.updateApplicationStage(id, stage);
   await logActivity({

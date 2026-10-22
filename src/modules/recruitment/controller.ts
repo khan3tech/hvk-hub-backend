@@ -67,7 +67,7 @@ export async function getApplication(req: Request, res: Response): Promise<void>
 
 export async function moveApplicationStage(req: Request, res: Response): Promise<void> {
   res.json(
-    await service.moveApplicationStage(getOrgId(req), idParam(req), req.body.stage, actorOf(req)),
+    await service.moveApplicationStage(getOrgId(req), idParam(req), req.body.stage, actorOf(req), req.body.justification),
   );
 }
 

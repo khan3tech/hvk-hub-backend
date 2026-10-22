@@ -80,6 +80,8 @@ export type Application = z.infer<typeof ApplicationSchema>;
 
 export const UpdateApplicationStageRequestSchema = z.object({
   stage: ApplicationStageSchema,
+  // 022: required to hire past an incomplete or flagged background check (HR/Admin only)
+  justification: z.string().trim().min(10).max(2000).optional(),
 });
 export type UpdateApplicationStageRequest = z.infer<typeof UpdateApplicationStageRequestSchema>;
 

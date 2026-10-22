@@ -50,7 +50,7 @@ export default async function ({ tok, me, hire, department }) {
   check("005 Manager sees rounds + results on application", detail.status === 200 && detail.json.interviewRounds?.[0]?.feedback === "Strong systems design", show(detail));
 
   // Terminal + closed posting edge cases
-  const hired = await call("PATCH", `/recruitment/applications/${a.json.id}/stage`, { token: tok.hr, body: { stage: "HIRED" } });
+  const hired = await call("PATCH", `/recruitment/applications/${a.json.id}/stage`, { token: tok.hr, body: { stage: "HIRED", justification: "E2E: background check handled outside this test (022 override)" } });
   check("005 HIRED is terminal", hired.json.isTerminal === true, show(hired));
   const mgrAfter = await call("PATCH", `/recruitment/applications/${a.json.id}/stage`, { token: tok.manager, body: { stage: "OFFER" } });
   check("005 Manager can't move a final application", mgrAfter.status === 409, show(mgrAfter));

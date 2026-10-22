@@ -26,7 +26,7 @@ export default async function ({ tok, hire }) {
   await call("PATCH", `/recruitment/applications/${appA.id}/stage`, { token: tok.hr, body: { stage: "INTERVIEW" } });
   const mineMid = (await call("GET", "/referrals/me", { token: referrer.token })).json.find((r) => r.id === a.json.id);
   check("021 referrer sees stage only, no interview detail (FR-003)", mineMid?.stage === "INTERVIEW" && !("interviewRounds" in mineMid) && !("feedback" in mineMid), JSON.stringify(mineMid));
-  await call("PATCH", `/recruitment/applications/${appA.id}/stage`, { token: tok.hr, body: { stage: "HIRED" } });
+  await call("PATCH", `/recruitment/applications/${appA.id}/stage`, { token: tok.hr, body: { stage: "HIRED", justification: "E2E: background check handled outside this test (022 override)" } });
   const afterHire = (await call("GET", "/referrals/me", { token: referrer.token })).json.find((r) => r.id === a.json.id);
   check("021 hired with a zero-day period -> payable (FR-005)", afterHire?.status === "PAYABLE", JSON.stringify(afterHire));
 
@@ -55,7 +55,7 @@ export default async function ({ tok, hire }) {
   await call("PUT", "/referrals/config", { token: tok.hr, body: { bonusAmount: 9999, qualifyingDays: 60 } });
   check("021 later config changes don't touch an in-progress referral (FR-010)", b.json.bonusAmount === 5000 && b.json.qualifyingDays === 30, show(b));
   const appB = (await call("GET", `/recruitment/postings/${posting.id}/applications`, { token: tok.hr })).json.find((x) => x.candidate?.email === `bea.${RUN}@example.com`);
-  await call("PATCH", `/recruitment/applications/${appB.id}/stage`, { token: tok.hr, body: { stage: "HIRED" } });
+  await call("PATCH", `/recruitment/applications/${appB.id}/stage`, { token: tok.hr, body: { stage: "HIRED", justification: "E2E: background check handled outside this test (022 override)" } });
   const pending = (await call("GET", "/referrals", { token: tok.hr })).json.find((r) => r.id === b.json.id);
   check("021 hired with a 30-day period -> pending (SC-002)", pending?.status === "PENDING" && pending.qualifyingUntil, JSON.stringify(pending));
   const beaEmp = (await call("POST", "/employees", { token: tok.hr, body: { name: "Bea Early", email: `bea.${RUN}@example.com`, departmentId: dept.id, designationId: (await call("GET", "/designations", { token: tok.hr })).json[0].id, dateOfJoining: new Date().toISOString().slice(0, 10) } })).json;

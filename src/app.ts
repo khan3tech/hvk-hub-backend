@@ -40,6 +40,9 @@ import { idempotency, purgeExpiredIdempotencyRecords } from "./middleware/idempo
 import { devicesRouter } from "./modules/devices/routes.js";
 import { careersRouter } from "./modules/careers/routes.js";
 import { referralsRouter } from "./modules/referrals/routes.js";
+import { bgvRouter } from "./modules/bgv/routes.js";
+import * as bgv from "./modules/bgv/service.js";
+import { setApplicationDecorator, setHireGate } from "./modules/recruitment/service.js";
 import * as referrals from "./modules/referrals/service.js";
 import { onApplicationStageChanged } from "./modules/recruitment/service.js";
 import { setOneOffEarningsProvider } from "./modules/payroll/service.js";
@@ -69,6 +72,9 @@ onCandidateDeleted((orgId, candidateId) => deleteCandidateDocuments(orgId, candi
 onCandidateDeleted((_orgId, _candidateId, applicationIds) => referrals.deleteForApplications(applicationIds)); // 020/021
 onApplicationStageChanged((orgId, applicationId, from, to) => referrals.onStageChanged(orgId, applicationId, from, to)); // 021 FR-005/007
 setOneOffEarningsProvider(referrals.referralEarnings); // 021 FR-008
+setHireGate(bgv.hireGate); // 022 FR-005/006
+setApplicationDecorator(bgv.applicationDecoration); // 022 US1.3
+onCandidateDeleted((_orgId, _candidateId, applicationIds) => bgv.deleteForApplications(applicationIds)); // 020/022
 registerJob("referral-qualifying", 60 * 60 * 1000, async () => {
   await referrals.evaluateQualifying(); // 021 FR-005/006
 });
@@ -134,6 +140,7 @@ export function createApp() {
   app.use("/api/devices", devicesRouter);
   app.use("/api/public/careers", careersRouter); // 020: no authentication
   app.use("/api/referrals", referralsRouter);
+  app.use("/api/bgv", bgvRouter);
 
   if (process.env.NODE_ENV !== "production") {
     const openApiDocument = generateOpenApiDocument();
