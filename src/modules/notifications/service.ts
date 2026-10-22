@@ -25,6 +25,14 @@ interface Recipient {
   email: string | null;
 }
 
+// 019: push to the user's devices is plugged in here (registered in app.ts) — additive only.
+type PushDispatcher = (orgId: string, userId: string, event: { type: string; message: string; link?: string | null }) => Promise<void>;
+let pushDispatcher: PushDispatcher | null = null;
+
+export function setPushDispatcher(dispatcher: PushDispatcher | null): void {
+  pushDispatcher = dispatcher;
+}
+
 async function deliver(orgId: string, recipient: Recipient, event: NotificationEvent) {
   // research.md R1: the in-app row is written first and unconditionally.
   await repo.createNotification({
@@ -34,6 +42,14 @@ async function deliver(orgId: string, recipient: Recipient, event: NotificationE
     message: event.message,
     link: event.link ?? null,
   });
+
+  if (pushDispatcher) {
+    try {
+      await pushDispatcher(orgId, recipient.userId, event);
+    } catch (err) {
+      logger.warn({ err, type: event.type, userId: recipient.userId }, "push dispatch failed");
+    }
+  }
 
   if (!event.email || !recipient.email) return; // in-app only, or no address (edge case)
 

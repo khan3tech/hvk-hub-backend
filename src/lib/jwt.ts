@@ -53,6 +53,7 @@ export interface MfaTokenPayload {
   sub: string;
   purpose: "mfa";
   orgId: string;
+  deviceId?: string;
 }
 
 function mfaSecret(): string {
@@ -61,8 +62,8 @@ function mfaSecret(): string {
   return `${base}:mfa-challenge`;
 }
 
-export function signMfaToken(userId: string, orgId: string): string {
-  return jwt.sign({ sub: userId, purpose: "mfa", orgId } satisfies MfaTokenPayload, mfaSecret(), { expiresIn: "5m" });
+export function signMfaToken(userId: string, orgId: string, deviceId?: string): string {
+  return jwt.sign({ sub: userId, purpose: "mfa", orgId, ...(deviceId ? { deviceId } : {}) } satisfies MfaTokenPayload, mfaSecret(), { expiresIn: "5m" });
 }
 
 export function verifyMfaToken(token: string): MfaTokenPayload {

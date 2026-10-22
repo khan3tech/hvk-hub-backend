@@ -51,7 +51,7 @@ async function logActivity(params: {
   });
 }
 
-async function issueSession(orgId: string, userId: string) {
+async function issueSession(orgId: string, userId: string, deviceId: string | null = null) {
   const refreshJwt = signRefreshToken({ sub: userId }, getSecret("JWT_REFRESH_SECRET"));
   const expiresAt = moment().add(REFRESH_TOKEN_TTL_MS, "milliseconds").toDate();
   await repo.createRefreshToken({
@@ -59,6 +59,7 @@ async function issueSession(orgId: string, userId: string) {
     userId,
     tokenHash: hashToken(refreshJwt),
     expiresAt,
+    deviceId,
   });
   return { refreshJwt, expiresAt };
 }
@@ -76,21 +77,23 @@ export function setLoginPolicy(policy: LoginPolicy | null): void {
 }
 
 // The single place a session is issued, for password, MFA-completed and SSO sign-ins alike.
-export async function completeSignIn(orgId: string, userId: string, method: "password" | "mfa" | "sso") {
+export async function completeSignIn(orgId: string, userId: string, method: "password" | "mfa" | "sso", deviceId: string | null = null) {
   const user = await repo.findUserById(orgId, userId);
   if (!user) throw new DomainError("INVALID_CREDENTIALS", "Invalid email or password.", 401);
-  return signInUser(orgId, user, method);
+  return signInUser(orgId, user, method, deviceId);
 }
 
 async function signInUser(
   orgId: string,
   user: { id: string; email: string; role: string; employeeId: string | null },
   method: "password" | "mfa" | "sso",
+  deviceId: string | null = null,
 ) {
-  // FR-013 (spec Clarifications 2026-09-14): only one active session per user — a new
-  // sign-in ends any session already active on another device/browser.
-  await repo.revokeAllRefreshTokensForUser(user.id);
-  const { refreshJwt } = await issueSession(orgId, user.id);
+  // 001 FR-013: a (web) sign-in ends every other session. 019 FR-009: an installed-app device
+  // that identifies itself only replaces its own previous session, so devices stay independent.
+  if (deviceId) await repo.revokeDeviceRefreshTokens(user.id, deviceId);
+  else await repo.revokeAllRefreshTokensForUser(user.id);
+  const { refreshJwt } = await issueSession(orgId, user.id, deviceId);
 
   const accessPayload: AccessTokenPayload = {
     sub: user.id,
@@ -207,10 +210,10 @@ export async function login(input: LoginRequest) {
 
   // 013 FR-008/FR-009: password OK, but no session until the second factor is done.
   if (policy.mfa !== "NONE") {
-    return { mfaRequired: true as const, enrollmentRequired: policy.mfa === "ENROLL", mfaToken: signMfaToken(user.id, orgId) };
+    return { mfaRequired: true as const, enrollmentRequired: policy.mfa === "ENROLL", mfaToken: signMfaToken(user.id, orgId, input.deviceId) };
   }
 
-  return signInUser(orgId, user, "password");
+  return signInUser(orgId, user, "password", input.deviceId ?? null);
 }
 
 export async function refresh(rawRefreshToken: string) {
@@ -243,7 +246,7 @@ export async function refresh(rawRefreshToken: string) {
   // Rotate: revoke the presented token, issue a new one — limits the replay window of a
   // stolen refresh token (contracts/auth-api.md § POST /auth/refresh).
   await repo.revokeRefreshToken(stored.id);
-  const { refreshJwt } = await issueSession(orgId, stored.userId);
+  const { refreshJwt } = await issueSession(orgId, stored.userId, stored.deviceId);
 
   const accessPayload: AccessTokenPayload = {
     sub: stored.userId,

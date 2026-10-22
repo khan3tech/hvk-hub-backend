@@ -95,6 +95,18 @@ describe("notifications — delivery", () => {
   });
 });
 
+describe("notifications — push (019 FR-006/008)", () => {
+  it("also pushes, and a push failure never blocks the in-app notification", async () => {
+    vi.mocked(employees.getEmployeeSummary).mockResolvedValue(employee("ACTIVE"));
+    const dispatcher = vi.fn().mockRejectedValue(new Error("push down"));
+    service.setPushDispatcher(dispatcher);
+    await expect(service.notifyEmployees(ORG, ["emp_1"], { type: "LEAVE_PENDING_APPROVAL", message: "Review", link: "/x" })).resolves.toBeUndefined();
+    service.setPushDispatcher(null);
+    expect(repo.createNotification).toHaveBeenCalled();
+    expect(dispatcher).toHaveBeenCalledWith(ORG, "user_1", expect.objectContaining({ link: "/x" }));
+  });
+});
+
 describe("notifications — center (US2)", () => {
   it("404s when marking someone else's (or a missing) notification read", async () => {
     vi.mocked(repo.markRead).mockResolvedValue({ count: 0 });

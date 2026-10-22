@@ -10,6 +10,8 @@ export const LoginRequestSchema = z.object({
   password: z.string().min(8),
   // 015: organization slug — only needed when the email exists in more than one organization.
   organization: z.string().trim().min(1).max(60).optional(),
+  // 019 FR-009: a stable id per installed-app instance; that device keeps its own session.
+  deviceId: z.string().trim().min(8).max(100).optional(),
 });
 export type LoginRequest = z.infer<typeof LoginRequestSchema>;
 

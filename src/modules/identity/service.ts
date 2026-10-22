@@ -115,22 +115,23 @@ export async function resetMfa(orgId: string, userId: string, actor: AccessToken
 async function userFromMfaToken(mfaToken: string) {
   let sub: string;
   let orgId: string;
+  let deviceId: string | undefined;
   try {
-    ({ sub, orgId } = verifyMfaToken(mfaToken));
+    ({ sub, orgId, deviceId } = verifyMfaToken(mfaToken));
   } catch {
     throw new DomainError("INVALID_SESSION", "Your sign-in attempt expired. Please sign in again.", 401);
   }
   const user = await getUserAuthState(orgId, sub);
   if (!user || !user.active) throw new DomainError("INVALID_SESSION", "Your sign-in attempt expired. Please sign in again.", 401);
   if (user.locked) throw new DomainError("ACCOUNT_LOCKED", "This account is locked. Contact an administrator to unlock it.", 403);
-  return { ...user, orgId };
+  return { ...user, orgId, deviceId: deviceId ?? null };
 }
 
 // 015: the org comes from the signed challenge token, not the request.
 export async function completeMfaSignIn(mfaToken: string, code: string) {
   const user = await userFromMfaToken(mfaToken);
   await verifySecondFactor(user.id, code);
-  return completeSignIn(user.orgId, user.id, "mfa");
+  return completeSignIn(user.orgId, user.id, "mfa", user.deviceId);
 }
 
 export async function startEnrollmentFromChallenge(mfaToken: string) {
@@ -141,7 +142,7 @@ export async function startEnrollmentFromChallenge(mfaToken: string) {
 export async function confirmEnrollmentFromChallenge(mfaToken: string, code: string) {
   const user = await userFromMfaToken(mfaToken);
   await confirmEnrollment(user.orgId, user.id, code, { employeeId: user.employeeId });
-  return completeSignIn(user.orgId, user.id, "mfa");
+  return completeSignIn(user.orgId, user.id, "mfa", user.deviceId);
 }
 
 // --- Settings & break-glass (US1.3, US2) ---

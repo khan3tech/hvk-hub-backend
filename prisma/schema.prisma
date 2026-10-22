@@ -127,6 +127,8 @@ model RefreshToken {
   expiresAt DateTime
   revokedAt DateTime?
   createdAt DateTime  @default(now())
+  // 019 FR-009: an installed-app instance's own session (null = a web sign-in, 001 FR-013 rules)
+  deviceId  String?
 
   @@index([userId])
   @@index([tokenHash])
@@ -1194,6 +1196,10 @@ model DeviceRegistration {
   pushToken    String
   platform     String
   registeredAt DateTime @default(now())
+  // 019: the push endpoint (unique per browser subscription) and freshness
+  endpoint     String?  @unique
+  deviceId     String?
+  lastSeenAt   DateTime @default(now())
 
   @@index([orgId, userId])
 }
@@ -1439,4 +1445,17 @@ model AssistantInteraction {
   createdAt     DateTime @default(now())
 
   @@index([orgId, createdAt])
+}
+
+// 019 FR-005: replay-safe retries — the first response to an Idempotency-Key is stored and
+// returned again for any retry with the same key from the same caller.
+model IdempotencyRecord {
+  id          String   @id @default(cuid())
+  scopeHash   String   @unique // hash of caller credential + method + path + key
+  status      Int?
+  body        Json?
+  completedAt DateTime?
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
 }

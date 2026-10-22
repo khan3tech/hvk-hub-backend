@@ -52,6 +52,7 @@ export function createRefreshToken(params: {
   userId: string;
   tokenHash: string;
   expiresAt: Date;
+  deviceId?: string | null;
 }) {
   return prisma.refreshToken.create({ data: params });
 }
@@ -127,4 +128,9 @@ export function findUsersByEmailAnyOrg(email: string) {
     where: { email: email.toLowerCase() },
     include: { employee: { select: { status: true } } },
   });
+}
+
+// 019 FR-009: a device's new sign-in replaces only that device's session.
+export function revokeDeviceRefreshTokens(userId: string, deviceId: string) {
+  return prisma.refreshToken.updateMany({ where: { userId, deviceId, revokedAt: null }, data: { revokedAt: new Date() } });
 }

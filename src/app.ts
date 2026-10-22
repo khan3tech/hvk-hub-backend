@@ -36,6 +36,10 @@ import { platformRouter } from "./modules/organizations/routes.js";
 import { orgChartRouter } from "./modules/orgchart/routes.js";
 import { helpdeskRouter } from "./modules/helpdesk/routes.js";
 import { surveysRouter } from "./modules/surveys/routes.js";
+import { idempotency, purgeExpiredIdempotencyRecords } from "./middleware/idempotency.js";
+import { devicesRouter } from "./modules/devices/routes.js";
+import { dispatchPush } from "./modules/devices/service.js";
+import { setPushDispatcher } from "./modules/notifications/service.js";
 import { organizationDirectory } from "./modules/organizations/service.js";
 import { assetsRouter } from "./modules/assets/routes.js";
 import * as assets from "./modules/assets/service.js";
@@ -53,6 +57,10 @@ exit.registerExitTaskGuard("ASSET_RETURN", assets.assetReturnGuard); // 014 US2.
 setStatutoryCalculator(calculateStatutory); // 010 FR-004
 setLoginPolicy(loginPolicy); // 013 SSO enforcement + MFA
 setOrganizationDirectory(organizationDirectory); // 015 org slugs + suspension
+setPushDispatcher(dispatchPush); // 019 FR-006
+registerJob("idempotency-purge", 60 * 60 * 1000, async () => {
+  await purgeExpiredIdempotencyRecords(); // 019 FR-005
+});
 registerJob("exit-due-prompts", 60 * 60 * 1000, async () => {
   await exit.promptExitsDue(); // 009 US2.3
 });
@@ -74,6 +82,7 @@ export function createApp() {
   );
   app.use(cookieParser());
   app.use(express.json());
+  app.use(idempotency); // 019 FR-005: safe retries via Idempotency-Key
   app.use(pinoHttp({ logger }));
 
   app.get("/health", (_req, res) => {
@@ -108,6 +117,7 @@ export function createApp() {
   app.use("/api/org-chart", orgChartRouter);
   app.use("/api/helpdesk", helpdeskRouter);
   app.use("/api/surveys", surveysRouter);
+  app.use("/api/devices", devicesRouter);
 
   if (process.env.NODE_ENV !== "production") {
     const openApiDocument = generateOpenApiDocument();
