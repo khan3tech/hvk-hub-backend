@@ -39,6 +39,10 @@ import { surveysRouter } from "./modules/surveys/routes.js";
 import { idempotency, purgeExpiredIdempotencyRecords } from "./middleware/idempotency.js";
 import { devicesRouter } from "./modules/devices/routes.js";
 import { careersRouter } from "./modules/careers/routes.js";
+import { referralsRouter } from "./modules/referrals/routes.js";
+import * as referrals from "./modules/referrals/service.js";
+import { onApplicationStageChanged } from "./modules/recruitment/service.js";
+import { setOneOffEarningsProvider } from "./modules/payroll/service.js";
 import { onCandidateDeleted } from "./modules/recruitment/service.js";
 import { deleteCandidateDocuments } from "./modules/documents/service.js";
 import { dispatchPush } from "./modules/devices/service.js";
@@ -62,6 +66,12 @@ setLoginPolicy(loginPolicy); // 013 SSO enforcement + MFA
 setOrganizationDirectory(organizationDirectory); // 015 org slugs + suspension
 setPushDispatcher(dispatchPush); // 019 FR-006
 onCandidateDeleted((orgId, candidateId) => deleteCandidateDocuments(orgId, candidateId)); // 020 FR-010
+onCandidateDeleted((_orgId, _candidateId, applicationIds) => referrals.deleteForApplications(applicationIds)); // 020/021
+onApplicationStageChanged((orgId, applicationId, from, to) => referrals.onStageChanged(orgId, applicationId, from, to)); // 021 FR-005/007
+setOneOffEarningsProvider(referrals.referralEarnings); // 021 FR-008
+registerJob("referral-qualifying", 60 * 60 * 1000, async () => {
+  await referrals.evaluateQualifying(); // 021 FR-005/006
+});
 registerJob("idempotency-purge", 60 * 60 * 1000, async () => {
   await purgeExpiredIdempotencyRecords(); // 019 FR-005
 });
@@ -123,6 +133,7 @@ export function createApp() {
   app.use("/api/surveys", surveysRouter);
   app.use("/api/devices", devicesRouter);
   app.use("/api/public/careers", careersRouter); // 020: no authentication
+  app.use("/api/referrals", referralsRouter);
 
   if (process.env.NODE_ENV !== "production") {
     const openApiDocument = generateOpenApiDocument();

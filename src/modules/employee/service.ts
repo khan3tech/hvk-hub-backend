@@ -343,6 +343,12 @@ export async function countActiveEmployees(orgId: string) {
   return (await repo.listEmployees(orgId, { status: "ACTIVE" })).length;
 }
 
+// 021: match a hired candidate to their employee record by email.
+export async function findEmployeeSummaryByEmail(orgId: string, email: string) {
+  const e = await repo.findEmployeeByEmail(orgId, email);
+  return e ? getEmployeeSummary(orgId, e.id) : null;
+}
+
 export async function offboardEmployee(orgId: string, id: string, actor: AccessTokenPayload) {
   const existing = await repo.findEmployeeById(orgId, id);
   if (!existing) {

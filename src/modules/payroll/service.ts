@@ -152,6 +152,23 @@ export type StatutoryCalculator = (input: {
 
 let statutoryCalculator: StatutoryCalculator | null = null;
 
+// 021: one-off earnings (e.g. referral bonuses) HR scheduled for a period. Each line becomes its
+// own earning on the payslip (not prorated); markIncluded runs once the payslip is saved.
+export interface OneOffEarning {
+  id: string;
+  label: string;
+  amount: number;
+}
+export interface OneOffEarningsProvider {
+  list(orgId: string, employeeId: string, periodMonth: number, periodYear: number): Promise<OneOffEarning[]>;
+  markIncluded(orgId: string, ids: string[], periodMonth: number, periodYear: number): Promise<void>;
+}
+let oneOffProvider: OneOffEarningsProvider | null = null;
+
+export function setOneOffEarningsProvider(provider: OneOffEarningsProvider | null): void {
+  oneOffProvider = provider;
+}
+
 export function setStatutoryCalculator(calculator: StatutoryCalculator | null): void {
   statutoryCalculator = calculator;
 }
@@ -161,6 +178,7 @@ interface PayslipComputation {
   deductions: Record<string, number>;
   statutoryDeductions: StatutoryLine[];
   netPay: number;
+  oneOffIds: string[];
 }
 
 async function computePayslipForEmployee(
@@ -203,8 +221,13 @@ async function computePayslipForEmployee(
     earnings[name] = amount * prorationRatio;
   }
 
-  const grossEarnings = Object.values(earnings).reduce((sum, v) => sum + v, 0);
-  const dailyRate = totalWeekdays === 0 ? 0 : grossEarnings / (activeWeekdays || totalWeekdays);
+  const regularGross = Object.values(earnings).reduce((sum, v) => sum + v, 0);
+  const dailyRate = totalWeekdays === 0 ? 0 : regularGross / (activeWeekdays || totalWeekdays);
+
+  // 021 FR-008: one-off lines are added after proration and kept out of the daily rate.
+  const oneOffs = oneOffProvider ? await oneOffProvider.list(orgId, employee.id, periodMonth, periodYear) : [];
+  for (const o of oneOffs) earnings[o.label] = (earnings[o.label] ?? 0) + o.amount;
+  const grossEarnings = regularGross + oneOffs.reduce((sum, o) => sum + o.amount, 0);
 
   // research.md R2: applied after proration, against the prorated gross's implied daily rate —
   // never double-counted against the full, un-prorated period.
@@ -230,7 +253,7 @@ async function computePayslipForEmployee(
     Object.values(deductions).reduce((sum, v) => sum + v, 0) +
     statutoryDeductions.reduce((sum, line) => sum + line.amount, 0);
 
-  return { earnings, deductions, statutoryDeductions, netPay: grossEarnings - totalDeductions };
+  return { earnings, deductions, statutoryDeductions, netPay: grossEarnings - totalDeductions, oneOffIds: oneOffs.map((o) => o.id) };
 }
 
 export async function runPayroll(
@@ -269,6 +292,9 @@ export async function runPayroll(
         currency: DEFAULT_CURRENCY,
       },
     });
+    if (oneOffProvider && result.oneOffIds.length > 0) {
+      await oneOffProvider.markIncluded(orgId, result.oneOffIds, input.periodMonth, input.periodYear);
+    }
     payslipCount++;
   }
 

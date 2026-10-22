@@ -39,6 +39,7 @@ const {
   getMyPayslipById,
   getTeamPayslips,
   setStatutoryCalculator,
+  setOneOffEarningsProvider,
 } = await import("./service.js");
 
 const ORG_ID = "org_1";
@@ -265,5 +266,27 @@ describe("payroll service — statutory deductions (010 FR-004/005/010)", () => 
     expect(data.deductions).not.toHaveProperty("Retirement fund");
     expect(data.netPay).toBe(54000); // 60000 gross - 6000 statutory
     expect(calculator).toHaveBeenCalledWith(expect.objectContaining({ prorationRatio: 1, earnings: { basic: 50000, hra: 10000 } }));
+  });
+});
+
+describe("payroll service — one-off earnings (021 FR-008)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(attendanceService.getUnpaidLeaveDaysForPeriod).mockResolvedValue(0);
+  });
+
+  it("adds a labelled one-off line, includes it in net pay, then marks it included", async () => {
+    vi.mocked(repo.findActiveEmployeesForPeriod).mockResolvedValue([
+      { id: EMPLOYEE_ID, dateOfJoining: moment.utc("2020-01-01").toDate(), status: "ACTIVE" },
+    ] as never);
+    vi.mocked(repo.findEffectiveSalaryStructure).mockResolvedValue(makeStructure() as never);
+    const provider = { list: vi.fn().mockResolvedValue([{ id: "r1", label: "Referral bonus (Cara)", amount: 5000 }]), markIncluded: vi.fn() };
+    setOneOffEarningsProvider(provider);
+    await runPayroll(ORG_ID, { periodMonth: 9, periodYear: 2026 }, HR_ACTOR);
+    setOneOffEarningsProvider(null);
+    const data = vi.mocked(repo.upsertPayslip).mock.calls[0]![0].data;
+    expect(data.earnings).toMatchObject({ basic: 50000, hra: 10000, "Referral bonus (Cara)": 5000 });
+    expect(data.netPay).toBe(65000);
+    expect(provider.markIncluded).toHaveBeenCalledWith(ORG_ID, ["r1"], 9, 2026);
   });
 });

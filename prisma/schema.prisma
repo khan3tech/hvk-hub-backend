@@ -1225,6 +1225,8 @@ enum ApplicationSource {
 // ============================================================================
 
 enum ReferralStatus {
+  // 021: in the pipeline, not yet hired or rejected
+  IN_PIPELINE
   PENDING
   PAYABLE
   PAID
@@ -1249,10 +1251,16 @@ model Referral {
   application         Application    @relation(fields: [applicationId], references: [id])
   bonusAmount         Float
   qualifyingDays      Int
-  status              ReferralStatus @default(PENDING)
+  status              ReferralStatus @default(IN_PIPELINE)
   hiredAt             DateTime?
   qualifyingUntil     DateTime?
   paidAt              DateTime?
+  // 021: the hire as an employee (matched by email or linked by HR), payroll scheduling, audit
+  hireEmployeeId      String?
+  payrollPeriodMonth  Int?
+  payrollPeriodYear   Int?
+  closedReason        String?
+  createdAt           DateTime       @default(now())
 
   @@index([orgId, status])
 }

@@ -5,6 +5,7 @@ import { Prisma } from "@prisma/client";
 import { DomainError } from "../../middleware/errorHandler.js";
 import { getEmployeeSummary } from "../employee/service.js";
 import { notifyDepartmentManagers, notifyEmployees, notifyRoles } from "../notifications/service.js";
+import { logger } from "../../lib/logger.js";
 import * as repo from "./repository.js";
 import type { AccessTokenPayload } from "../../lib/jwt.js";
 import type {
@@ -311,6 +312,13 @@ export async function applyFromOutside(
   return applyCandidate(orgId, candidateId, posting, { ...opts, actorEmployeeId: opts.actorEmployeeId ?? null });
 }
 
+// 021: what a referrer may see about their referral — stage only, never interview feedback.
+export async function getApplicationBrief(orgId: string, id: string) {
+  const a = await repo.findApplicationDetail(orgId, id);
+  if (!a) return null;
+  return { id: a.id, stage: a.stage, candidateName: a.candidate.name, candidateEmail: a.candidate.email, postingTitle: a.jobPosting.title };
+}
+
 export async function findApplicationByReferenceHash(hash: string) {
   return repo.findApplicationByReferenceHash(hash);
 }
@@ -402,7 +410,22 @@ export async function moveApplicationStage(
     before: { stage: application.stage },
     after: { stage },
   });
+  for (const hook of stageHooks) {
+    try {
+      await hook(orgId, id, application.stage, stage, actor);
+    } catch (err) {
+      logger.error({ err, applicationId: id }, "application stage hook failed");
+    }
+  }
   return toApplication(updated);
+}
+
+// 021: features reacting to pipeline outcomes (e.g. referral bonuses) register here (app.ts).
+type StageHook = (orgId: string, applicationId: string, from: ApplicationStage, to: ApplicationStage, actor: AccessTokenPayload) => Promise<void>;
+const stageHooks: StageHook[] = [];
+
+export function onApplicationStageChanged(hook: StageHook): void {
+  stageHooks.push(hook);
 }
 
 // --- Interview rounds (User Story 4) ---
