@@ -60,6 +60,31 @@ async function withUsage(org: NonNullable<Awaited<ReturnType<typeof repo.findOrg
   return { ...org, usage: { activeEmployees, ...usage } };
 }
 
+// Modules holding per-organization data outside the database (e.g. 025 branding files) clean up
+// here before an organization is deleted (025 FR-010). Registered in app.ts.
+type OrganizationDeletedHook = (orgId: string) => Promise<void>;
+const organizationDeletedHooks = new Set<OrganizationDeletedHook>();
+export function onOrganizationDeleted(hook: OrganizationDeletedHook): void {
+  organizationDeletedHooks.add(hook);
+}
+
+async function deleteOrganizationData(orgId: string) {
+  for (const hook of organizationDeletedHooks) {
+    try {
+      await hook(orgId);
+    } catch (err) {
+      logger.error({ err, orgId }, "organization-deleted hook failed");
+    }
+  }
+  await repo.deleteOrganization(orgId);
+}
+
+// Name and slug for organization-facing surfaces (025 branding, payslips). No usage figures.
+export async function getOrganizationIdentity(id: string) {
+  const org = await repo.findOrganization(id);
+  return org ? { id: org.id, name: org.name, slug: org.slug, status: org.status } : null;
+}
+
 export async function listOrganizations() {
   return Promise.all((await repo.listOrganizations()).map(withUsage));
 }
@@ -105,7 +130,7 @@ export async function provisionOrganization(input: CreateOrganizationRequest, su
   } catch (err) {
     // Don't leave a half-provisioned organization behind (a failed cleanup must not mask the cause).
     try {
-      await repo.deleteOrganization(org.id);
+      await deleteOrganizationData(org.id);
     } catch (cleanupErr) {
       logger.error({ err: cleanupErr, orgId: org.id }, "rollback of half-provisioned organization failed");
     }

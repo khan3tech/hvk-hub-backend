@@ -1476,10 +1476,15 @@ model SuccessionReadinessChange {
 // ============================================================================
 
 model OrganizationBranding {
-  id           String  @id @default(cuid())
-  orgId        String  @unique
-  logoUrl      String?
-  primaryColor String?
+  id              String    @id @default(cuid())
+  orgId           String    @unique
+  // Internal storage key for the logo (never returned; served via /api/public/branding/:slug/logo).
+  logoUrl         String?
+  logoContentType String?
+  logoUpdatedAt   DateTime?
+  primaryColor    String?
+  updatedById     String?
+  updatedAt       DateTime  @default(now()) @updatedAt
 }
 
 // ============================================================================

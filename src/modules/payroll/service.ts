@@ -7,6 +7,7 @@ import { getTeamView, getOffboardedDate, getEmployeeSummary } from "../employee/
 import { notifyEmployees } from "../notifications/service.js";
 import { getUnpaidLeaveDaysForPeriod } from "../attendance/service.js";
 import * as repo from "./repository.js";
+import { renderPayslipPdf, type PayslipBranding } from "./pdf.js";
 import type { AccessTokenPayload } from "../../lib/jwt.js";
 import type { SetSalaryStructureRequest, RunPayrollRequest } from "./schema.js";
 
@@ -349,6 +350,30 @@ export async function getMyPayslipById(orgId: string, employeeId: string, id: st
     throw new DomainError("FORBIDDEN", "You don't have permission to view this payslip.", 403);
   }
   return payslip;
+}
+
+// 025 FR-006: the organization's logo and color on payslip PDFs (registered in app.ts); without a
+// provider, PDFs use the default look.
+type PayslipBrandingProvider = (orgId: string) => Promise<PayslipBranding>;
+let payslipBranding: PayslipBrandingProvider = async () => ({ organizationName: "TeamLoom", primaryColor: "#4F46E5", logo: null });
+export function setPayslipBrandingProvider(provider: PayslipBrandingProvider): void {
+  payslipBranding = provider;
+}
+
+async function payslipPdf(orgId: string, payslip: NonNullable<Awaited<ReturnType<typeof repo.findPayslipById>>>) {
+  const employee = await getEmployeeSummary(orgId, payslip.employeeId);
+  const pdf = await renderPayslipPdf(payslip, { name: employee?.name ?? "", email: employee?.email ?? "" }, await payslipBranding(orgId));
+  return { pdf, filename: `payslip-${payslip.periodYear}-${String(payslip.periodMonth).padStart(2, "0")}.pdf` };
+}
+
+export async function getMyPayslipPdf(orgId: string, employeeId: string, id: string) {
+  return payslipPdf(orgId, await getMyPayslipById(orgId, employeeId, id));
+}
+
+export async function getPayslipPdf(orgId: string, id: string) {
+  const payslip = await repo.findPayslipById(orgId, id);
+  if (!payslip) throw new DomainError("NOT_FOUND", "Payslip not found.", 404);
+  return payslipPdf(orgId, payslip);
 }
 
 export async function getTeamPayslips(

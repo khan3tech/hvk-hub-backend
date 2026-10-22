@@ -44,6 +44,8 @@ import { referralsRouter } from "./modules/referrals/routes.js";
 import { bgvRouter } from "./modules/bgv/routes.js";
 import { learningRouter } from "./modules/learning/routes.js";
 import { successionRouter } from "./modules/succession/routes.js";
+import { brandingRouter, publicBrandingRouter } from "./modules/branding/routes.js";
+import * as branding from "./modules/branding/service.js";
 import * as succession from "./modules/succession/service.js";
 import * as learning from "./modules/learning/service.js";
 import * as bgv from "./modules/bgv/service.js";
@@ -55,12 +57,12 @@ import { onCandidateDeleted } from "./modules/recruitment/service.js";
 import { deleteCandidateDocuments } from "./modules/documents/service.js";
 import { dispatchPush } from "./modules/devices/service.js";
 import { setPushDispatcher } from "./modules/notifications/service.js";
-import { organizationDirectory } from "./modules/organizations/service.js";
+import { onOrganizationDeleted, organizationDirectory } from "./modules/organizations/service.js";
 import { assetsRouter } from "./modules/assets/routes.js";
 import * as assets from "./modules/assets/service.js";
 import { expensesRouter } from "./modules/expenses/routes.js";
 import { calculateStatutory } from "./modules/statutory/service.js";
-import { setStatutoryCalculator } from "./modules/payroll/service.js";
+import { setPayslipBrandingProvider, setStatutoryCalculator } from "./modules/payroll/service.js";
 
 // Cross-module extension points (Principle I): modules that build on Employee register here
 // rather than the employee module importing them.
@@ -72,6 +74,8 @@ registerEmployeeDecorator("assets", assets.assetsDecorator); // 014 FR-004
 registerEmployeeDecorator("succession", succession.employeeDecoration); // 024 US1.1 (HR/Admin only)
 onEmployeeOffboarded(succession.onEmployeeOffboarded); // 024 FR-005
 setCriticalPositionsProvider(succession.criticalPositions); // 024: org chart overlay
+setPayslipBrandingProvider(branding.brandingAssets); // 025 FR-006
+onOrganizationDeleted(branding.clearBranding); // 025 FR-010
 exit.registerExitTaskGuard("ASSET_RETURN", assets.assetReturnGuard); // 014 US2.3
 setStatutoryCalculator(calculateStatutory); // 010 FR-004
 setLoginPolicy(loginPolicy); // 013 SSO enforcement + MFA
@@ -152,6 +156,8 @@ export function createApp() {
   app.use("/api/bgv", bgvRouter);
   app.use("/api/learning", learningRouter);
   app.use("/api/succession", successionRouter);
+  app.use("/api/branding", brandingRouter);
+  app.use("/api/public/branding", publicBrandingRouter); // 025: no authentication
 
   if (process.env.NODE_ENV !== "production") {
     const openApiDocument = generateOpenApiDocument();

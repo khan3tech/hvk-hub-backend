@@ -6,6 +6,7 @@ process.env.BOT_POW_BITS = "8";
 process.env.BOT_MIN_FILL_MS = "1000";
 
 vi.mock("../auth/service.js", () => ({ resolveOrganizationSlug: vi.fn() }));
+vi.mock("../branding/service.js", () => ({ getBranding: vi.fn() }));
 vi.mock("../organizations/service.js", () => ({ organizationDirectory: { isActive: vi.fn() } }));
 vi.mock("../employee/service.js", () => ({ listDepartments: vi.fn() }));
 vi.mock("../recruitment/service.js", () => ({

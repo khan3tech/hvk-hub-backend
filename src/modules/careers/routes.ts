@@ -28,6 +28,9 @@ const StatusSchema = z.object({ email: z.string().trim().email(), reference: z.s
 
 const slug = (req: Request) => req.params.org ?? "";
 
+careersRouter.get("/:org", readLimiter, handle(async (req: Request, res: Response) => {
+  res.json(await service.getCareersPage(slug(req)));
+}));
 careersRouter.get("/:org/postings", readLimiter, handle(async (req: Request, res: Response) => {
   res.json(await service.listPostings(slug(req)));
 }));
@@ -45,6 +48,7 @@ careersRouter.post("/:org/status", statusLimiter, validate(StatusSchema), handle
 }));
 
 const org = z.object({ org: z.string() });
+documentRoute({ method: "get", path: "/public/careers/{org}", tag: TAG, auth: false, description: "Careers page header: organization name, branding (logo, color) and open role count (025 FR-007).", params: org });
 documentRoute({ method: "get", path: "/public/careers/{org}/postings", tag: TAG, auth: false, description: "Open roles (title, department, description). No account needed.", params: org });
 documentRoute({ method: "get", path: "/public/careers/{org}/postings/{id}", tag: TAG, auth: false, description: "One open role (404 once closed/on hold).", params: org.extend({ id: z.string() }) });
 documentRoute({ method: "get", path: "/public/careers/{org}/challenge", tag: TAG, auth: false, description: "Bot-check challenge: find `solution` so sha256(nonce:solution) has `bits` leading zero bits; submit after `minFillMs`.", params: org });

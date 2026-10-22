@@ -8,6 +8,7 @@ import { organizationDirectory } from "../organizations/service.js";
 import { listDepartments } from "../employee/service.js";
 import { applyFromOutside, findApplicationByReferenceHash, findOrCreateCandidate, findPosting, listOpenPostings, setCandidateResume } from "../recruitment/service.js";
 import { storeCandidateFile, type UploadedFile } from "../documents/service.js";
+import { getBranding } from "../branding/service.js";
 
 const RESUME_TYPES = new Set(["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"]);
 const hashRef = (ref: string) => createHash("sha256").update(ref.trim().toUpperCase()).digest("hex");
@@ -33,6 +34,13 @@ async function orgFor(slug: string) {
 async function publicPosting(orgId: string, p: { id: string; title: string; description: string | null; departmentId: string; openings: number }) {
   const dept = (await listDepartments(orgId)).find((d) => d.id === p.departmentId);
   return { id: p.id, title: p.title, description: p.description, department: dept?.name ?? null, openings: p.openings };
+}
+
+// 025 FR-007: the careers page header — organization name, logo and color, open role count.
+export async function getCareersPage(slug: string) {
+  const orgId = await orgFor(slug);
+  const [branding, postings] = await Promise.all([getBranding(orgId), listOpenPostings(orgId)]);
+  return { organizationName: branding.organizationName, branding, openRoles: postings.length };
 }
 
 // FR-001/FR-002: open postings only.

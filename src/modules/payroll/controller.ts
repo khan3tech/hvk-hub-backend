@@ -61,6 +61,21 @@ export async function getMyPayslipById(req: Request, res: Response): Promise<voi
   res.json(result);
 }
 
+function sendPdf(res: Response, out: { pdf: Buffer; filename: string }) {
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="${out.filename}"`);
+  res.send(out.pdf);
+}
+
+export async function getMyPayslipPdf(req: Request, res: Response): Promise<void> {
+  const actor = req.user as AccessTokenPayload;
+  sendPdf(res, await payrollService.getMyPayslipPdf(getOrgId(req), requireEmployeeId(actor), req.params.id ?? ""));
+}
+
+export async function getPayslipPdf(req: Request, res: Response): Promise<void> {
+  sendPdf(res, await payrollService.getPayslipPdf(getOrgId(req), req.params.id ?? ""));
+}
+
 export async function getTeamPayslips(req: Request, res: Response): Promise<void> {
   const actor = req.user as AccessTokenPayload;
   const { periodMonth, periodYear } = req.query as Record<string, string | undefined>;

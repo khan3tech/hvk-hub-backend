@@ -51,6 +51,14 @@ payrollRouter.get("/payslips/me/:id", authenticate, (req, res, next) => {
   controller.getMyPayslipById(req, res).catch(next);
 });
 
+payrollRouter.get("/payslips/me/:id/pdf", authenticate, (req, res, next) => {
+  controller.getMyPayslipPdf(req, res).catch(next);
+});
+
+payrollRouter.get("/payslips/:id/pdf", authenticate, authorize("ADMIN", "HR"), (req, res, next) => {
+  controller.getPayslipPdf(req, res).catch(next);
+});
+
 payrollRouter.get("/payslips/team", authenticate, authorize("MANAGER"), (req, res, next) => {
   controller.getTeamPayslips(req, res).catch(next);
 });
