@@ -115,3 +115,15 @@ export function writeActivityLog(params: {
     },
   });
 }
+
+// 020 FR-010: everything stored for a candidate, for deletion on request.
+export function listAllForCandidate(orgId: string, candidateId: string) {
+  return prisma.document.findMany({ where: { orgId, candidateId } });
+}
+
+export function deleteForCandidate(orgId: string, candidateId: string, documentIds: string[]) {
+  return prisma.$transaction([
+    prisma.signatureRequest.deleteMany({ where: { orgId, OR: [{ recipientCandidateId: candidateId }, { documentId: { in: documentIds } }] } }),
+    prisma.document.deleteMany({ where: { orgId, candidateId } }),
+  ]);
+}

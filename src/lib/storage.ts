@@ -1,5 +1,5 @@
 import { createReadStream } from "node:fs";
-import { mkdir, writeFile, stat } from "node:fs/promises";
+import { mkdir, writeFile, stat, rm } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type { Readable } from "node:stream";
@@ -11,6 +11,8 @@ import type { Readable } from "node:stream";
 export interface FileStorage {
   put(data: Buffer, opts: { contentType: string; prefix: string }): Promise<string>;
   open(key: string): Promise<Readable>;
+  // Deletes a stored file; a missing file is not an error (020 FR-010 data removal).
+  remove(key: string): Promise<void>;
 }
 
 export class LocalDiskStorage implements FileStorage {
@@ -35,6 +37,10 @@ export class LocalDiskStorage implements FileStorage {
     const full = this.resolve(key);
     await stat(full); // throws ENOENT before streaming starts
     return createReadStream(full);
+  }
+
+  async remove(key: string): Promise<void> {
+    await rm(this.resolve(key), { force: true });
   }
 }
 

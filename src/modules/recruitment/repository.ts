@@ -136,3 +136,26 @@ export function writeActivityLog(params: {
     },
   });
 }
+
+export function findCandidateByEmail(orgId: string, email: string) {
+  return prisma.candidate.findFirst({ where: { orgId, email: email.toLowerCase() }, orderBy: { createdAt: "asc" } });
+}
+
+export function updateCandidate(id: string, data: Prisma.CandidateUncheckedUpdateInput) {
+  return prisma.candidate.update({ where: { id }, data });
+}
+
+export function findApplicationByReferenceHash(hash: string) {
+  return prisma.application.findUnique({
+    where: { publicReferenceHash: hash },
+    include: { candidate: { select: { email: true } }, jobPosting: { select: { title: true } } },
+  });
+}
+
+export function deleteCandidateCascade(candidateId: string, applicationIds: string[]) {
+  return prisma.$transaction([
+    prisma.interviewRound.deleteMany({ where: { applicationId: { in: applicationIds } } }),
+    prisma.application.deleteMany({ where: { candidateId } }),
+    prisma.candidate.delete({ where: { id: candidateId } }),
+  ]);
+}

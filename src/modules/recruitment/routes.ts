@@ -39,6 +39,7 @@ recruitmentRouter.get("/postings/:id/applications", authenticate, authorize("ADM
 recruitmentRouter.get("/candidates", authenticate, HR, handle(controller.searchCandidates));
 recruitmentRouter.post("/candidates", authenticate, HR, validate(CreateCandidateRequestSchema), handle(controller.createCandidate));
 recruitmentRouter.get("/candidates/:id", authenticate, HR, handle(controller.getCandidate));
+recruitmentRouter.delete("/candidates/:id", authenticate, HR, handle(controller.deleteCandidate));
 
 recruitmentRouter.post("/applications", authenticate, HR, validate(CreateApplicationRequestSchema), handle(controller.createApplication));
 recruitmentRouter.get("/applications/:id", authenticate, authorize("ADMIN", "HR", "MANAGER"), handle(controller.getApplication));
@@ -57,6 +58,7 @@ documentRoute({ method: "get", path: "/recruitment/postings/{id}/applications", 
 documentRoute({ method: "get", path: "/recruitment/candidates", tag: TAG, description: "Search candidates by name or email. Admin/HR only.", query: z.object({ q: z.string().optional() }), response: z.array(CandidateSchema) });
 documentRoute({ method: "post", path: "/recruitment/candidates", tag: TAG, description: "Add a candidate. Admin/HR only.", body: CreateCandidateRequestSchema, response: CandidateSchema });
 documentRoute({ method: "get", path: "/recruitment/candidates/{id}", tag: TAG, description: "Get one candidate. Admin/HR only.", params: idParams, response: CandidateSchema });
+documentRoute({ method: "delete", path: "/recruitment/candidates/{id}", tag: TAG, status: 204, description: "Delete a candidate and their applications, interviews and documents (data-subject request). Admin/HR.", params: idParams });
 documentRoute({ method: "post", path: "/recruitment/applications", tag: TAG, description: "Apply a candidate to an open posting (starts at APPLIED). Admin/HR only; duplicates are rejected.", body: CreateApplicationRequestSchema, response: ApplicationSchema });
 documentRoute({ method: "get", path: "/recruitment/applications/{id}", tag: TAG, description: "Application with candidate, posting and every interview round.", params: idParams, response: ApplicationDetailSchema });
 documentRoute({ method: "patch", path: "/recruitment/applications/{id}/stage", tag: TAG, description: "Move an application to any stage (Admin/HR, including corrections) or, for a Manager, within their department while not final.", params: idParams, body: UpdateApplicationStageRequestSchema, response: ApplicationSchema });

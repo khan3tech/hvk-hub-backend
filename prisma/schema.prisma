@@ -361,6 +361,8 @@ model JobPosting {
   status       JobPostingStatus @default(OPEN)
   openings     Int
   applications Application[]
+  // 020 FR-001: public-facing description on the careers page
+  description  String?
 
   @@index([orgId, status])
 }
@@ -395,6 +397,8 @@ model Application {
 
   // 020-public-careers-portal, 021-referral-program — where this application came from
   source             ApplicationSource @default(INTERNAL)
+  // 020 FR-008: hash of the reference code a public applicant uses to check status
+  publicReferenceHash String?          @unique
   referredByEmployeeId String?
   referredBy          Employee?         @relation(fields: [referredByEmployeeId], references: [id])
 

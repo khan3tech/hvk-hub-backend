@@ -9,6 +9,8 @@ export const CreateJobPostingRequestSchema = z.object({
   title: z.string().min(1),
   departmentId: z.string(),
   openings: z.number().int().positive(),
+  // 020: shown on the public careers page
+  description: z.string().trim().max(5000).optional(),
 });
 export type CreateJobPostingRequest = z.infer<typeof CreateJobPostingRequestSchema>;
 
@@ -16,9 +18,10 @@ export const UpdateJobPostingRequestSchema = z
   .object({
     status: JobPostingStatusSchema.optional(),
     openings: z.number().int().positive().optional(),
+    description: z.string().trim().max(5000).nullable().optional(),
   })
-  .refine((v) => v.status !== undefined || v.openings !== undefined, {
-    message: "Provide status and/or openings.",
+  .refine((v) => v.status !== undefined || v.openings !== undefined || v.description !== undefined, {
+    message: "Provide status, openings and/or description.",
   });
 export type UpdateJobPostingRequest = z.infer<typeof UpdateJobPostingRequestSchema>;
 
@@ -28,6 +31,7 @@ export const JobPostingSchema = z.object({
   departmentId: z.string(),
   status: JobPostingStatusSchema,
   openings: z.number().int().positive(),
+  description: z.string().nullable().optional(),
 });
 export type JobPosting = z.infer<typeof JobPostingSchema>;
 

@@ -342,3 +342,32 @@ export async function policyStatus(orgId: string, policyId: string) {
   }
   return { policyId, acknowledgedCount: acknowledged.length, pendingCount: pending.length, acknowledged, pending };
 }
+
+// --- Entry points for other modules ---
+
+// 020: a public applicant's resume, stored as a candidate document (no staff actor involved).
+export async function storeCandidateFile(orgId: string, candidateId: string, label: string, file: UploadedFile) {
+  const key = await store(file, `documents/candidates/${candidateId}`);
+  const doc = await repo.createDocumentVersion(orgId, { ownerType: "CANDIDATE", candidateId }, {
+    label,
+    fileUrl: key,
+    contentType: file.mimetype,
+    sizeBytes: file.size,
+    originalName: file.originalname.slice(0, 200),
+    uploadedById: null,
+  });
+  return publicDocument(doc);
+}
+
+// 020 FR-010: registered with recruitment.onCandidateDeleted() in app.ts.
+export async function deleteCandidateDocuments(orgId: string, candidateId: string) {
+  const docs = await repo.listAllForCandidate(orgId, candidateId);
+  await repo.deleteForCandidate(orgId, candidateId, docs.map((d) => d.id));
+  for (const d of docs) {
+    try {
+      await getStorage().remove(d.fileUrl);
+    } catch (err) {
+      logger.warn({ err, documentId: d.id }, "stored file removal failed");
+    }
+  }
+}

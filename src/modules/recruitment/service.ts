@@ -219,6 +219,23 @@ export async function createApplication(
   ]);
   if (!candidate) throw new DomainError("NOT_FOUND", "Candidate not found.", 404);
   if (!posting) throw new DomainError("NOT_FOUND", "Job posting not found.", 404);
+  return applyCandidate(orgId, candidate.id, posting, { source: "INTERNAL", actorEmployeeId: actor.employeeId });
+}
+
+// Shared by the internal path (above) and the public/referral entry points, so all get exactly
+// the same rules: open postings only (POSTING_NOT_OPEN) and one application per
+// candidate/posting (FR-005, 020 SC-004).
+async function applyCandidate(
+  orgId: string,
+  candidateId: string,
+  posting: { id: string; status: string },
+  opts: {
+    source: "INTERNAL" | "PUBLIC" | "REFERRAL";
+    actorEmployeeId: string | null;
+    publicReferenceHash?: string;
+    referredByEmployeeId?: string;
+  },
+) {
   // Edge case: a closed/on-hold posting accepts no new applications.
   if (posting.status !== "OPEN") {
     throw new DomainError("POSTING_NOT_OPEN", "This posting is not accepting applications.", 409);
@@ -228,9 +245,12 @@ export async function createApplication(
   try {
     application = await repo.createApplication({
       orgId,
-      candidateId: candidate.id,
+      candidateId,
       jobPostingId: posting.id,
       stage: "APPLIED",
+      source: opts.source,
+      publicReferenceHash: opts.publicReferenceHash ?? null,
+      referredByEmployeeId: opts.referredByEmployeeId ?? null,
     });
   } catch (err) {
     // FR-005 / SC-004: the @@unique([candidateId, jobPostingId]) constraint is the backstop,
@@ -247,13 +267,78 @@ export async function createApplication(
 
   await logActivity({
     orgId,
-    actorEmployeeId: actor.employeeId,
+    actorEmployeeId: opts.actorEmployeeId,
     action: "recruitment.application_created",
     entity: "Application",
     entityId: application.id,
-    after: { stage: application.stage },
+    after: { stage: application.stage, source: opts.source },
   });
   return toApplication(application);
+}
+
+// --- Entry points for other modules (020 careers, 021 referrals) ---
+
+export async function listOpenPostings(orgId: string) {
+  return repo.listJobPostings(orgId, { status: "OPEN" });
+}
+
+export async function findPosting(orgId: string, id: string) {
+  return repo.findJobPostingById(orgId, id);
+}
+
+// One candidate record per email within an org, so duplicate detection spans every entry point
+// (020 SC-004). Existing details are kept; a new resume link replaces the old one.
+export async function findOrCreateCandidate(orgId: string, input: { name: string; email: string; phone?: string; resumeUrl: string }) {
+  const email = input.email.toLowerCase();
+  const existing = await repo.findCandidateByEmail(orgId, email);
+  if (existing) return repo.updateCandidate(existing.id, { resumeUrl: input.resumeUrl, ...(input.phone ? { phone: input.phone } : {}) });
+  return repo.createCandidate({ orgId, name: input.name, email, phone: input.phone, resumeUrl: input.resumeUrl });
+}
+
+export async function setCandidateResume(orgId: string, candidateId: string, resumeUrl: string) {
+  if (!(await repo.findCandidateById(orgId, candidateId))) throw new DomainError("NOT_FOUND", "Candidate not found.", 404);
+  return repo.updateCandidate(candidateId, { resumeUrl });
+}
+
+export async function applyFromOutside(
+  orgId: string,
+  candidateId: string,
+  postingId: string,
+  opts: { source: "PUBLIC" | "REFERRAL"; publicReferenceHash?: string; referredByEmployeeId?: string; actorEmployeeId?: string | null },
+) {
+  const posting = await repo.findJobPostingById(orgId, postingId);
+  if (!posting) throw new DomainError("NOT_FOUND", "Job posting not found.", 404);
+  return applyCandidate(orgId, candidateId, posting, { ...opts, actorEmployeeId: opts.actorEmployeeId ?? null });
+}
+
+export async function findApplicationByReferenceHash(hash: string) {
+  return repo.findApplicationByReferenceHash(hash);
+}
+
+// 020 FR-010: data-subject removal of a candidate and everything recruitment holds on them.
+// Other modules register cleanup for their own rows (documents, referrals, checks).
+type CandidateCleanup = (orgId: string, candidateId: string, applicationIds: string[]) => Promise<void>;
+const candidateCleanups: CandidateCleanup[] = [];
+
+export function onCandidateDeleted(cleanup: CandidateCleanup): void {
+  candidateCleanups.push(cleanup);
+}
+
+export async function deleteCandidate(orgId: string, id: string, actor: AccessTokenPayload) {
+  const candidate = await repo.findCandidateById(orgId, id);
+  if (!candidate) throw new DomainError("NOT_FOUND", "Candidate not found.", 404);
+  const applicationIds = (await repo.listApplications(orgId, { candidateId: id })).map((a) => a.id);
+  for (const cleanup of candidateCleanups) await cleanup(orgId, id, applicationIds);
+  await repo.deleteCandidateCascade(id, applicationIds);
+  // The audit row records only that a removal happened, never personal data.
+  await logActivity({
+    orgId,
+    actorEmployeeId: actor.employeeId,
+    action: "recruitment.candidate_deleted",
+    entity: "Candidate",
+    entityId: id,
+    after: { applications: applicationIds.length },
+  });
 }
 
 export async function listApplicationsForPosting(

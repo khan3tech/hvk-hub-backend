@@ -38,6 +38,9 @@ import { helpdeskRouter } from "./modules/helpdesk/routes.js";
 import { surveysRouter } from "./modules/surveys/routes.js";
 import { idempotency, purgeExpiredIdempotencyRecords } from "./middleware/idempotency.js";
 import { devicesRouter } from "./modules/devices/routes.js";
+import { careersRouter } from "./modules/careers/routes.js";
+import { onCandidateDeleted } from "./modules/recruitment/service.js";
+import { deleteCandidateDocuments } from "./modules/documents/service.js";
 import { dispatchPush } from "./modules/devices/service.js";
 import { setPushDispatcher } from "./modules/notifications/service.js";
 import { organizationDirectory } from "./modules/organizations/service.js";
@@ -58,6 +61,7 @@ setStatutoryCalculator(calculateStatutory); // 010 FR-004
 setLoginPolicy(loginPolicy); // 013 SSO enforcement + MFA
 setOrganizationDirectory(organizationDirectory); // 015 org slugs + suspension
 setPushDispatcher(dispatchPush); // 019 FR-006
+onCandidateDeleted((orgId, candidateId) => deleteCandidateDocuments(orgId, candidateId)); // 020 FR-010
 registerJob("idempotency-purge", 60 * 60 * 1000, async () => {
   await purgeExpiredIdempotencyRecords(); // 019 FR-005
 });
@@ -118,6 +122,7 @@ export function createApp() {
   app.use("/api/helpdesk", helpdeskRouter);
   app.use("/api/surveys", surveysRouter);
   app.use("/api/devices", devicesRouter);
+  app.use("/api/public/careers", careersRouter); // 020: no authentication
 
   if (process.env.NODE_ENV !== "production") {
     const openApiDocument = generateOpenApiDocument();

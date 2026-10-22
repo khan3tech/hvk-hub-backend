@@ -46,7 +46,7 @@ const employee = (o: Record<string, unknown> = {}) =>
 
 beforeEach(() => {
   vi.clearAllMocks();
-  setStorage({ put: vi.fn().mockResolvedValue("documents/k"), open: vi.fn().mockResolvedValue(Readable.from(["x"])) });
+  setStorage({ put: vi.fn().mockResolvedValue("documents/k"), open: vi.fn().mockResolvedValue(Readable.from(["x"])), remove: vi.fn() });
   setEmailSender({ send: vi.fn() });
   vi.mocked(employees.getEmployeeSummary).mockResolvedValue(employee());
   vi.mocked(repo.listSignatureRequests).mockResolvedValue([]);

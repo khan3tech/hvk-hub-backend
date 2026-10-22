@@ -52,6 +52,11 @@ export async function getCandidate(req: Request, res: Response): Promise<void> {
   res.json(await service.getCandidate(getOrgId(req), idParam(req)));
 }
 
+export async function deleteCandidate(req: Request, res: Response): Promise<void> {
+  await service.deleteCandidate(getOrgId(req), idParam(req), actorOf(req));
+  res.status(204).send();
+}
+
 export async function createApplication(req: Request, res: Response): Promise<void> {
   res.status(201).json(await service.createApplication(getOrgId(req), req.body, actorOf(req)));
 }

@@ -32,7 +32,7 @@ const receipt = { buffer: Buffer.from("%PDF-"), mimetype: "application/pdf", ori
 
 beforeEach(() => {
   vi.clearAllMocks();
-  setStorage({ put: vi.fn().mockResolvedValue("expenses/k"), open: vi.fn().mockResolvedValue(Readable.from(["x"])) });
+  setStorage({ put: vi.fn().mockResolvedValue("expenses/k"), open: vi.fn().mockResolvedValue(Readable.from(["x"])), remove: vi.fn() });
   vi.mocked(repo.listCategories).mockResolvedValue([{ id: "cat" }] as never);
   vi.mocked(employees.getEmployeeSummary).mockResolvedValue({ id: "emp_1", name: "E", managerId: "emp_mgr" } as never);
   vi.mocked(repo.createClaim).mockImplementation(((data: object) => Promise.resolve({ id: "c1", status: "PENDING", ...data })) as never);
