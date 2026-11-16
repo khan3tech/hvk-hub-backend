@@ -19,6 +19,16 @@ mv "$ROOT/app.new" "$ROOT/app"
 if [ ! -f "$ENV_FILE" ]; then
   rand() { openssl rand -hex 32; }
   PG_PASSWORD="$(rand)"
+  # No domain yet: serve HTTPS on a free sslip.io hostname derived from the instance's public
+  # (Elastic) IP, e.g. 13-233-1-2.sslip.io — Caddy obtains a Let's Encrypt cert for it. HTTPS is
+  # required because the frontend (Amplify) is served over HTTPS and proxies /api here.
+  IMDS_TOKEN="$(curl -sf -X PUT http://169.254.169.254/latest/api/token -H 'X-aws-ec2-metadata-token-ttl-seconds: 60' || true)"
+  PUBLIC_IP="$(curl -sf -H "X-aws-ec2-metadata-token: $IMDS_TOKEN" http://169.254.169.254/latest/meta-data/public-ipv4 || true)"
+  if [ -n "$PUBLIC_IP" ]; then
+    SITE="${PUBLIC_IP//./-}.sslip.io"; COOKIE_SECURE_VALUE=true
+  else
+    SITE=":80"; COOKIE_SECURE_VALUE=false
+  fi
   umask 077
   cat > "$ENV_FILE" <<EOF
 POSTGRES_USER=teamloom
@@ -30,9 +40,9 @@ JWT_REFRESH_SECRET=$(rand)
 AUTH_LOCKOUT_THRESHOLD=3
 CORS_ALLOWED_ORIGINS=http://localhost:3000
 LOG_LEVEL=info
-# Plain HTTP until a domain is set; flip to true (and set SITE_ADDRESS) once TLS is live.
-COOKIE_SECURE=false
-SITE_ADDRESS=:80
+# SITE_ADDRESS: sslip.io hostname (HTTPS) until a real domain replaces it.
+COOKIE_SECURE=$COOKIE_SECURE_VALUE
+SITE_ADDRESS=$SITE
 SEED_PASSWORD=$(openssl rand -base64 18 | tr -d '/+=')
 EOF
   echo "Created $ENV_FILE with generated secrets"
