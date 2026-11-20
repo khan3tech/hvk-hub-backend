@@ -82,14 +82,14 @@ export default async function ({ tok, me, hire }) {
     check("013 Admin designates a break-glass account", bg.json.breakGlassAccounts?.some((b) => b.userId === me.admin.id), show(bg));
     const enf = await call("PUT", "/identity/settings", { token: tok.hr, body: { enforced: true } });
     check("013 HR enforces SSO (FR-004)", enf.json.enforced === true, show(enf));
-    const blocked = await login("employee@teamloom.dev");
+    const blocked = await login("employee@hvk.in");
     check("013 regular password sign-in refused with SSO guidance (SC-003)", blocked.status === 403 && blocked.json.error?.code === "SSO_REQUIRED", show(blocked));
-    const breakGlass = await login("admin@teamloom.dev");
+    const breakGlass = await login("admin@hvk.in");
     check("013 break-glass Admin still signs in with password (SC-005)", breakGlass.status === 200 && breakGlass.json.accessToken, show(breakGlass));
     const sso = await call("GET", "/auth/sso/start?redirect=false");
     check("013 SSO start reports missing server credentials clearly", sso.status === 503 && sso.json.error?.code === "SSO_NOT_CONFIGURED", show(sso));
   } finally {
     const off = await call("PUT", "/identity/settings", { token: tok.hr, body: { enforced: false, provider: null, mfaRequired: false } });
-    check("013 disabling enforcement restores password sign-in (FR-006)", off.json.enforced === false && (await login("employee@teamloom.dev")).status === 200, show(off));
+    check("013 disabling enforcement restores password sign-in (FR-006)", off.json.enforced === false && (await login("employee@hvk.in")).status === 200, show(off));
   }
 }

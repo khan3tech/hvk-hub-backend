@@ -1,8 +1,8 @@
 # Quickstart: Attendance & Leave
 
 Validates the feature end-to-end against a running `apps/api` + Postgres, using the seeded
-accounts from 001/002 (`admin@teamloom.dev`, `hr@teamloom.dev`, `manager@teamloom.dev`,
-`employee@teamloom.dev`, all password `Password123!`; `employee` reports to `manager`). See
+accounts from 001/002 (`admin@hvk.in`, `hr@hvk.in`, `manager@hvk.in`,
+`employee@hvk.in`, all password `Password123!`; `employee` reports to `manager`). See
 [contracts/attendance-leave-api.md](./contracts/attendance-leave-api.md) for exact request/
 response shapes and [data-model.md](./data-model.md) for field definitions.
 
@@ -16,7 +16,7 @@ response shapes and [data-model.md](./data-model.md) for field definitions.
 
 ## Scenario 1 — Check in and out for the day (User Story 1, P1)
 
-1. Sign in as `employee@teamloom.dev`. `POST /attendance/check-in`.
+1. Sign in as `employee@hvk.in`. `POST /attendance/check-in`.
 2. **Expect**: 201, `checkIn` set, `checkOut` null.
 3. Repeat `POST /attendance/check-in`.
 4. **Expect**: 409 `ALREADY_CHECKED_IN` (FR-003, spec Acceptance Scenario 3).
@@ -30,7 +30,7 @@ response shapes and [data-model.md](./data-model.md) for field definitions.
 ## Scenario 2 — File a leave request within balance (User Story 2, P1)
 
 1. Sign in as HR. `POST /leave-types` if none exist yet.
-2. Sign in as `employee@teamloom.dev`. `GET /leave-balances/me`.
+2. Sign in as `employee@hvk.in`. `GET /leave-balances/me`.
 3. **Expect**: 200, a row per leave type (lazily created if this is the employee's first check
    this year), `allocated` from `LeaveType.defaultDays`, `used: 0`.
 4. `POST /leave-requests` for a date range of working days well within the balance.
@@ -45,7 +45,7 @@ response shapes and [data-model.md](./data-model.md) for field definitions.
 
 ## Scenario 3 — Manager approves and rejects (User Story 3, P1)
 
-1. Using the pending request from Scenario 2, sign in as `manager@teamloom.dev`.
+1. Using the pending request from Scenario 2, sign in as `manager@hvk.in`.
    `GET /leave-requests/queue`.
 2. **Expect**: 200, includes the employee's pending request (Manager sees their direct reports'
    requests).
@@ -63,7 +63,7 @@ response shapes and [data-model.md](./data-model.md) for field definitions.
 
 ## Scenario 4 — Self-approval is impossible (Edge Cases, research.md R3/R4)
 
-1. Sign in as `manager@teamloom.dev`. File a leave request for themself
+1. Sign in as `manager@hvk.in`. File a leave request for themself
    (`POST /leave-requests`).
 2. `GET /leave-requests/queue` as the same manager.
 3. **Expect**: the manager's own request does NOT appear in their own queue (research.md R3).
@@ -76,8 +76,8 @@ response shapes and [data-model.md](./data-model.md) for field definitions.
 
 ## Scenario 5 — Scoped approval queue (User Story 3 Acceptance Scenario 3, SC-004)
 
-1. Sign in as `manager@teamloom.dev`. `GET /leave-requests/queue`.
-2. **Expect**: only requests from `manager`'s own direct reports (e.g. `employee@teamloom.dev`),
+1. Sign in as `manager@hvk.in`. `GET /leave-requests/queue`.
+2. **Expect**: only requests from `manager`'s own direct reports (e.g. `employee@hvk.in`),
    never a request from an employee outside their reporting line.
 3. Sign in as HR or Admin. `GET /leave-requests/queue`.
 4. **Expect**: every pending request company-wide, regardless of reporting line (FR-015).

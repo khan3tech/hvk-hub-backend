@@ -452,8 +452,8 @@ frontend) pass.
 
 **Update 2026-09-14 — database unblocked**: Postgres was brought up via `docker-compose up -d
 postgres`, T006's migration applied, and `prisma/seed.ts` (previously an empty stub) now seeds
-one User+Employee per role (`admin@teamloom.dev`, `hr@teamloom.dev`, `manager@teamloom.dev`,
-`employee@teamloom.dev`, all password `Password123!`, employee reports to manager) so the
+one User+Employee per role (`admin@hvk.in`, `hr@hvk.in`, `manager@hvk.in`,
+`employee@hvk.in`, all password `Password123!`, employee reports to manager) so the
 quickstart.md scenarios are actually runnable. T023/T030/T040/T045 (end-to-end quickstart
 validation) are unblocked but still not formally run/checked off — they need a person clicking
 through the browser, not just curl-level verification.

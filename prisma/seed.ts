@@ -23,7 +23,7 @@ async function main() {
     update: {},
     create: { id: ORG_ID, name: "Default organization", slug: ORG_ID },
   });
-  const superAdminEmail = (process.env.SUPER_ADMIN_EMAIL ?? "platform@teamloom.dev").toLowerCase();
+  const superAdminEmail = (process.env.SUPER_ADMIN_EMAIL ?? "platform@hvk.in").toLowerCase();
   await prisma.superAdmin.upsert({
     where: { email: superAdminEmail },
     update: {},
@@ -46,24 +46,24 @@ async function main() {
   });
 
   const adminEmployee = await prisma.employee.upsert({
-    where: { orgId_email: { orgId: ORG_ID, email: "admin@teamloom.dev" } },
+    where: { orgId_email: { orgId: ORG_ID, email: "admin@hvk.in" } },
     update: {},
     create: {
       orgId: ORG_ID,
       employeeCode: "EMP-0001",
       name: "Ada Admin",
-      email: "admin@teamloom.dev",
+      email: "admin@hvk.in",
       departmentId: department.id,
       designationId: designation.id,
       dateOfJoining: new Date("2024-01-01"),
     },
   });
   await prisma.user.upsert({
-    where: { orgId_email: { orgId: ORG_ID, email: "admin@teamloom.dev" } },
+    where: { orgId_email: { orgId: ORG_ID, email: "admin@hvk.in" } },
     update: {},
     create: {
       orgId: ORG_ID,
-      email: "admin@teamloom.dev",
+      email: "admin@hvk.in",
       passwordHash,
       role: "ADMIN",
       employeeId: adminEmployee.id,
@@ -71,24 +71,24 @@ async function main() {
   });
 
   const hrEmployee = await prisma.employee.upsert({
-    where: { orgId_email: { orgId: ORG_ID, email: "hr@teamloom.dev" } },
+    where: { orgId_email: { orgId: ORG_ID, email: "hr@hvk.in" } },
     update: {},
     create: {
       orgId: ORG_ID,
       employeeCode: "EMP-0002",
       name: "Helen HR",
-      email: "hr@teamloom.dev",
+      email: "hr@hvk.in",
       departmentId: department.id,
       designationId: designation.id,
       dateOfJoining: new Date("2024-01-01"),
     },
   });
   await prisma.user.upsert({
-    where: { orgId_email: { orgId: ORG_ID, email: "hr@teamloom.dev" } },
+    where: { orgId_email: { orgId: ORG_ID, email: "hr@hvk.in" } },
     update: {},
     create: {
       orgId: ORG_ID,
-      email: "hr@teamloom.dev",
+      email: "hr@hvk.in",
       passwordHash,
       role: "HR",
       employeeId: hrEmployee.id,
@@ -96,24 +96,24 @@ async function main() {
   });
 
   const managerEmployee = await prisma.employee.upsert({
-    where: { orgId_email: { orgId: ORG_ID, email: "manager@teamloom.dev" } },
+    where: { orgId_email: { orgId: ORG_ID, email: "manager@hvk.in" } },
     update: {},
     create: {
       orgId: ORG_ID,
       employeeCode: "EMP-0003",
       name: "Mark Manager",
-      email: "manager@teamloom.dev",
+      email: "manager@hvk.in",
       departmentId: department.id,
       designationId: designation.id,
       dateOfJoining: new Date("2024-01-01"),
     },
   });
   await prisma.user.upsert({
-    where: { orgId_email: { orgId: ORG_ID, email: "manager@teamloom.dev" } },
+    where: { orgId_email: { orgId: ORG_ID, email: "manager@hvk.in" } },
     update: {},
     create: {
       orgId: ORG_ID,
-      email: "manager@teamloom.dev",
+      email: "manager@hvk.in",
       passwordHash,
       role: "MANAGER",
       employeeId: managerEmployee.id,
@@ -123,13 +123,13 @@ async function main() {
   // Reports to the seeded Manager above, so RBAC scope checks (FR-006, quickstart.md
   // Scenario 3) have a real reporting-line pair to test against.
   const employeeEmployee = await prisma.employee.upsert({
-    where: { orgId_email: { orgId: ORG_ID, email: "employee@teamloom.dev" } },
+    where: { orgId_email: { orgId: ORG_ID, email: "employee@hvk.in" } },
     update: {},
     create: {
       orgId: ORG_ID,
       employeeCode: "EMP-0004",
       name: "Erin Employee",
-      email: "employee@teamloom.dev",
+      email: "employee@hvk.in",
       departmentId: department.id,
       designationId: designation.id,
       managerId: managerEmployee.id,
@@ -137,11 +137,11 @@ async function main() {
     },
   });
   await prisma.user.upsert({
-    where: { orgId_email: { orgId: ORG_ID, email: "employee@teamloom.dev" } },
+    where: { orgId_email: { orgId: ORG_ID, email: "employee@hvk.in" } },
     update: {},
     create: {
       orgId: ORG_ID,
-      email: "employee@teamloom.dev",
+      email: "employee@hvk.in",
       passwordHash,
       role: "EMPLOYEE",
       employeeId: employeeEmployee.id,
@@ -175,10 +175,10 @@ async function main() {
   console.log(
     `Seeded org "${ORG_ID}" with 4 users (password: ${process.env.SEED_PASSWORD ? "from SEED_PASSWORD" : SEED_PASSWORD}):`,
   );
-  console.log("  admin@teamloom.dev    (ADMIN)");
-  console.log("  hr@teamloom.dev       (HR)");
-  console.log("  manager@teamloom.dev  (MANAGER)");
-  console.log("  employee@teamloom.dev (EMPLOYEE, reports to manager@teamloom.dev)");
+  console.log("  admin@hvk.in    (ADMIN)");
+  console.log("  hr@hvk.in       (HR)");
+  console.log("  manager@hvk.in  (MANAGER)");
+  console.log("  employee@hvk.in (EMPLOYEE, reports to manager@hvk.in)");
   console.log(`Platform operator: ${superAdminEmail}`);
 }
 

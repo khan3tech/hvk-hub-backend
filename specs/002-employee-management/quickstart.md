@@ -1,8 +1,8 @@
 # Quickstart: Employee Management
 
 Validates the feature end-to-end against a running `apps/api` + Postgres, using the seeded
-accounts from 001 (`admin@teamloom.dev`, `hr@teamloom.dev`, `manager@teamloom.dev`,
-`employee@teamloom.dev`, all password `Password123!`) plus new employees created during these
+accounts from 001 (`admin@hvk.in`, `hr@hvk.in`, `manager@hvk.in`,
+`employee@hvk.in`, all password `Password123!`) plus new employees created during these
 scenarios. See [contracts/employee-api.md](./contracts/employee-api.md) for exact request/response
 shapes and [data-model.md](./data-model.md) for field definitions.
 
@@ -16,7 +16,7 @@ shapes and [data-model.md](./data-model.md) for field definitions.
 
 ## Scenario 1 — HR onboards a new employee (User Story 1, P1)
 
-1. Sign in as `hr@teamloom.dev`.
+1. Sign in as `hr@hvk.in`.
 2. `POST /employees` with a valid `name`, `email`, `departmentId`, `designationId`,
    `dateOfJoining`, and no `managerId`.
 3. **Expect**: 201, response includes a generated `employeeCode` (e.g. `EMP-00001`) and a
@@ -42,16 +42,16 @@ shapes and [data-model.md](./data-model.md) for field definitions.
 
 ## Scenario 3 — Role-scoped directory (User Story 2, P1)
 
-1. Sign in as `employee@teamloom.dev`. `GET /employees/directory?q=`.
+1. Sign in as `employee@hvk.in`. `GET /employees/directory?q=`.
 2. **Expect**: 200, basic info (`name`, `departmentId`, `designationId`) for all active
    employees — no `email`, no salary-adjacent fields.
 3. `GET /employees/:id` for an employee who is *not* the caller.
 4. **Expect**: 403 `FORBIDDEN` (an Employee can't fetch another's full record).
 5. `GET /employees/:id` for the caller's own id.
 6. **Expect**: 200, full own record.
-7. Sign in as `manager@teamloom.dev`. `GET /employees`.
+7. Sign in as `manager@hvk.in`. `GET /employees`.
 8. **Expect**: 200, own record + direct reports only — not the whole org.
-9. Sign in as `hr@teamloom.dev` or `admin@teamloom.dev`. `GET /employees?department=<id>`.
+9. Sign in as `hr@hvk.in` or `admin@hvk.in`. `GET /employees?department=<id>`.
 10. **Expect**: 200, all employees in that department across the org.
 
 ## Scenario 4 — Update propagates, offboarding preserves history (User Story 3, P2)

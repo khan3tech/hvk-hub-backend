@@ -6,7 +6,7 @@ node scripts/e2e/run-all.mjs 015
 ```
 
 1. Records are created in org A (default) across every module.
-2. The operator signs in at `/api/platform/auth/login` (`platform@teamloom.dev`). Org tokens get
+2. The operator signs in at `/api/platform/auth/login` (`platform@hvk.in`). Org tokens get
    401 on `/api/platform` and the platform token gets 401 on org APIs.
 3. The operator provisions org B, and B's Admin signs in at once. Org A's employee count is
    unchanged apart from the test's own hire.

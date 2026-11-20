@@ -185,7 +185,7 @@ status and the balance is unaffected until a decision is made (quickstart.md Sce
   `employeeId`, so there was no way to actually satisfy this Edge Case. Fixed by adding an
   optional `employeeId` field to `CreateLeaveRequestSchema` (HR/Admin only — a self-service
   caller setting it to anyone but themself gets 403 `FORBIDDEN`); verified live that HR can now
-  create a past-dated request for `employee@teamloom.dev` and that the employee cannot spoof
+  create a past-dated request for `employee@hvk.in` and that the employee cannot spoof
   `employeeId` to file on someone else's behalf.
 - [X] T018 [US2] Implement `getMyLeaveRequests(orgId, employeeId)` and
   `getMyLeaveBalances(orgId, employeeId, year)` in

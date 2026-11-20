@@ -1,8 +1,8 @@
 # Quickstart: Payroll
 
 Validates the feature end-to-end against a running `apps/api` + Postgres, using the seeded
-accounts from 001/002/003 (`admin@teamloom.dev`, `hr@teamloom.dev`, `manager@teamloom.dev`,
-`employee@teamloom.dev`, all password `Password123!`; `employee` reports to `manager`). See
+accounts from 001/002/003 (`admin@hvk.in`, `hr@hvk.in`, `manager@hvk.in`,
+`employee@hvk.in`, all password `Password123!`; `employee` reports to `manager`). See
 [contracts/payroll-api.md](./contracts/payroll-api.md) for exact request/response shapes and
 [data-model.md](./data-model.md) for field definitions.
 
@@ -16,7 +16,7 @@ accounts from 001/002/003 (`admin@teamloom.dev`, `hr@teamloom.dev`, `manager@tea
 
 ## Scenario 1 — HR defines a salary structure (User Story 1, P1)
 
-1. Sign in as HR. `POST /payroll/salary-structures/:employeeId` for `employee@teamloom.dev` with
+1. Sign in as HR. `POST /payroll/salary-structures/:employeeId` for `employee@hvk.in` with
    `{ basic: 50000, hra: 10000, allowances: { transport: 2000 }, effectiveFrom: "2026-01-01" }`.
 2. **Expect**: 201, the new structure returned.
 3. `GET /payroll/salary-structures/:employeeId`.
@@ -25,7 +25,7 @@ accounts from 001/002/003 (`admin@teamloom.dev`, `hr@teamloom.dev`, `manager@tea
 6. `GET /payroll/salary-structures/:employeeId?asOf=2026-09-15`.
 7. **Expect**: returns the *first* version (Jan) — the second (Oct) hasn't taken effect yet for
    that date (FR-002, research.md R1).
-8. Sign in as `employee@teamloom.dev`. Attempt `POST /payroll/salary-structures/:employeeId` for
+8. Sign in as `employee@hvk.in`. Attempt `POST /payroll/salary-structures/:employeeId` for
    themself.
 9. **Expect**: 403 — editing is refused for everyone except HR/Admin (spec Acceptance
    Scenario 3).
@@ -36,19 +36,19 @@ accounts from 001/002/003 (`admin@teamloom.dev`, `hr@teamloom.dev`, `manager@tea
 
 ## Scenario 2 — HR runs payroll for a period (User Story 2, P1)
 
-1. Ensure `employee@teamloom.dev` has a salary structure effective before the target period
-   (from Scenario 1) and `manager@teamloom.dev` does NOT yet have one.
+1. Ensure `employee@hvk.in` has a salary structure effective before the target period
+   (from Scenario 1) and `manager@hvk.in` does NOT yet have one.
 2. Sign in as HR. `POST /payroll/runs` for `{ periodMonth: 9, periodYear: 2026 }`.
-3. **Expect**: 200, `payslipCount >= 1`, `skipped` includes `manager@teamloom.dev`'s id with
+3. **Expect**: 200, `payslipCount >= 1`, `skipped` includes `manager@hvk.in`'s id with
    `reason: "NO_SALARY_STRUCTURE"` (FR-011) — not silently omitted.
 4. `GET /payroll/payslips` (HR, org-wide) filtered to that period.
-5. **Expect**: one payslip for `employee@teamloom.dev`, none for `manager@teamloom.dev`.
-6. Set a salary structure for `manager@teamloom.dev` (effective before the period). Re-run
+5. **Expect**: one payslip for `employee@hvk.in`, none for `manager@hvk.in`.
+6. Set a salary structure for `manager@hvk.in` (effective before the period). Re-run
    `POST /payroll/runs` for the same period.
 7. **Expect**: 200, `payslipCount` now includes both employees; `skipped` is empty.
 8. `GET /payroll/payslips` again for that period.
 9. **Expect**: still exactly one payslip per employee for that period (FR-006, SC-005) — the
-   first run's payslip for `employee@teamloom.dev` was replaced (same row, new `generatedAt`),
+   first run's payslip for `employee@hvk.in` was replaced (same row, new `generatedAt`),
    not duplicated.
 
 ## Scenario 3 — Unpaid-leave deduction and proration (User Story 2, edge cases)
@@ -69,14 +69,14 @@ accounts from 001/002/003 (`admin@teamloom.dev`, `hr@teamloom.dev`, `manager@tea
 
 ## Scenario 4 — Employee self-service payslip access (User Story 3, P2)
 
-1. Sign in as `employee@teamloom.dev`. `GET /payroll/payslips/me`.
+1. Sign in as `employee@hvk.in`. `GET /payroll/payslips/me`.
 2. **Expect**: 200, a list including the period(s) run above.
 3. `GET /payroll/payslips/me/:id` for one of their own payslips.
 4. **Expect**: 200, full earnings/deductions/net-pay breakdown, obtainable as a downloadable copy
    (SC-003 — locate and open in under 30s, a UI-timing check once the frontend exists).
 5. Attempt `GET /payroll/payslips/me/:id` using another employee's payslip id.
 6. **Expect**: 403 (spec Acceptance Scenario 3).
-7. Sign in as `manager@teamloom.dev`. `GET /payroll/payslips/team`.
+7. Sign in as `manager@hvk.in`. `GET /payroll/payslips/team`.
 8. **Expect**: 200, payslips for direct reports only, in view-only form (no edit endpoint exists
    for this role at all — enforced structurally, not just by omission from the UI).
 

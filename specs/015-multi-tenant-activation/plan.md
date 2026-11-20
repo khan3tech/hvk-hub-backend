@@ -22,7 +22,7 @@ Backend only.
   `failedLoginAttempts`, `lockedAt`.
 - **Migration `default_organization`** (data only): inserts the v0.1 org (`id = slug =
   "default"`) so existing data keeps working unchanged (FR-009, SC-004).
-- **Seed**: creates the Organization row and a platform operator (`platform@teamloom.dev`, or
+- **Seed**: creates the Organization row and a platform operator (`platform@hvk.in`, or
   `SUPER_ADMIN_EMAIL`/`SUPER_ADMIN_PASSWORD`).
 
 ## Research & decisions

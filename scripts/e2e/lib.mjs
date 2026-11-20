@@ -43,7 +43,7 @@ export async function setup() {
   const tok = {};
   const me = {};
   for (const role of ["admin", "hr", "manager", "employee"]) {
-    const r = await login(`${role}@teamloom.dev`);
+    const r = await login(`${role}@hvk.in`);
     if (r.status !== 200) throw new Error(`seeded ${role} login failed: ${show(r)}`);
     tok[role] = r.json.accessToken;
     me[role] = (await call("GET", "/auth/me", { token: tok[role] })).json;
@@ -63,7 +63,7 @@ export async function setup() {
       token: tok.hr,
       body: {
         name,
-        email: `${name.toLowerCase().replace(/\W/g, "")}.${RUN}@teamloom.dev`,
+        email: `${name.toLowerCase().replace(/\W/g, "")}.${RUN}@hvk.in`,
         departmentId: opts.departmentId ?? depts[0].id,
         designationId: desigs[0].id,
         managerId: opts.managerId ?? null,
@@ -101,7 +101,7 @@ export async function download(path, token) {
 // One platform (super-admin) sign-in per run — its login is rate-limited.
 let platformTokenPromise;
 export function platformToken() {
-  platformTokenPromise ??= call("POST", "/platform/auth/login", { body: { email: process.env.SUPER_ADMIN_EMAIL ?? "platform@teamloom.dev", password: process.env.SUPER_ADMIN_PASSWORD ?? SEED_PASSWORD } }).then((r) => {
+  platformTokenPromise ??= call("POST", "/platform/auth/login", { body: { email: process.env.SUPER_ADMIN_EMAIL ?? "platform@hvk.in", password: process.env.SUPER_ADMIN_PASSWORD ?? SEED_PASSWORD } }).then((r) => {
     if (r.status !== 200) throw new Error("platform login failed: " + show(r));
     return r.json.accessToken;
   });

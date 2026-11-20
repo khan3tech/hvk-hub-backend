@@ -37,7 +37,7 @@ const future = (days) => new Date(today.getTime() + days * 864e5).toISOString().
 // ---- Setup: tokens for seeded roles
 const tok = {};
 for (const role of ["admin", "hr", "manager", "employee"]) {
-  const r = await login(`${role}@teamloom.dev`);
+  const r = await login(`${role}@hvk.in`);
   check(`S1 seeded ${role} signs in (${r.ms}ms, SC-001 <5s)`, r.status === 200 && r.json.accessToken && r.ms < 5000, JSON.stringify(r.json));
   tok[role] = r.json.accessToken;
   check(`S1 ${role} login sets refresh cookie`, !!r.cookie);
@@ -50,7 +50,7 @@ for (const role of Object.keys(tok)) {
 }
 
 // ---- Scenario 1: generic invalid credentials
-const wrong = await login("manager@teamloom.dev", "nope-wrong-1");
+const wrong = await login("manager@hvk.in", "nope-wrong-1");
 const nobody = await login("nobody@example.com", "whatever-123");
 check("S1 wrong password -> 401 INVALID_CREDENTIALS", wrong.status === 401 && wrong.json.error?.code === "INVALID_CREDENTIALS", JSON.stringify(wrong.json));
 check("S1 unknown email gives identical response", nobody.status === wrong.status && JSON.stringify(nobody.json) === JSON.stringify(wrong.json), JSON.stringify(nobody.json));
@@ -62,7 +62,7 @@ const desigs = (await call("GET", "/designations", { token: tok.hr })).json;
 async function hire(name, role, managerId = null) {
   const r = await call("POST", "/employees", {
     token: tok.hr,
-    body: { name, email: `${name.toLowerCase().replace(/\W/g, "")}.${run}@teamloom.dev`, departmentId: depts[0].id, designationId: desigs[0].id, managerId, dateOfJoining: "2025-01-01", role },
+    body: { name, email: `${name.toLowerCase().replace(/\W/g, "")}.${run}@hvk.in`, departmentId: depts[0].id, designationId: desigs[0].id, managerId, dateOfJoining: "2025-01-01", role },
   });
   if (r.status !== 201) throw new Error("hire failed " + JSON.stringify(r.json));
   const l = await login(r.json.email, r.json.temporaryPassword);
