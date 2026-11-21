@@ -36,6 +36,7 @@ import { platformRouter } from "./modules/organizations/routes.js";
 import { orgChartRouter } from "./modules/orgchart/routes.js";
 import { setCriticalPositionsProvider } from "./modules/orgchart/service.js";
 import { helpdeskRouter } from "./modules/helpdesk/routes.js";
+import { timeRouter } from "./modules/timetracking/routes.js";
 import { surveysRouter } from "./modules/surveys/routes.js";
 import { idempotency, purgeExpiredIdempotencyRecords } from "./middleware/idempotency.js";
 import { devicesRouter } from "./modules/devices/routes.js";
@@ -158,6 +159,7 @@ export function createApp() {
   app.use("/api/platform", platformRouter); // 015 super-admin tier
   app.use("/api/org-chart", orgChartRouter);
   app.use("/api/helpdesk", helpdeskRouter);
+  app.use("/api/time", timeRouter);
   app.use("/api/surveys", surveysRouter);
   app.use("/api/devices", devicesRouter);
   app.use("/api/public/careers", careersRouter); // 020: no authentication

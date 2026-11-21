@@ -1593,3 +1593,119 @@ model BackgroundCheckSettings {
   defaultItems Json
   updatedAt    DateTime @default(now()) @updatedAt
 }
+
+// 028-time-tracker — projects, tasks, time entries, one running timer per employee and weekly
+// timesheets. Employee ids are plain columns: this module reads people only through 002's service.
+enum TimeProjectStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum TimeEntrySource {
+  MANUAL
+  TIMER
+}
+
+enum TimesheetStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+}
+
+model TimeProject {
+  id         String            @id @default(cuid())
+  orgId      String
+  name       String
+  code       String
+  clientName String?
+  billable   Boolean           @default(false)
+  status     TimeProjectStatus @default(ACTIVE)
+  ownerId    String
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+
+  tasks   TimeTask[]
+  members TimeProjectMember[]
+  entries TimeEntry[]
+
+  @@unique([orgId, code])
+  @@index([orgId, status])
+}
+
+model TimeProjectMember {
+  projectId  String
+  project    TimeProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  employeeId String
+  orgId      String
+  addedAt    DateTime    @default(now())
+
+  @@id([projectId, employeeId])
+  @@index([orgId, employeeId])
+}
+
+model TimeTask {
+  id        String            @id @default(cuid())
+  orgId     String
+  projectId String
+  project   TimeProject       @relation(fields: [projectId], references: [id])
+  name      String
+  status    TimeProjectStatus @default(ACTIVE)
+  createdAt DateTime          @default(now())
+
+  entries TimeEntry[]
+  timers  RunningTimer[]
+
+  @@unique([projectId, name])
+}
+
+model TimeEntry {
+  id         String          @id @default(cuid())
+  orgId      String
+  employeeId String
+  projectId  String
+  project    TimeProject     @relation(fields: [projectId], references: [id])
+  taskId     String
+  task       TimeTask        @relation(fields: [taskId], references: [id])
+  date       DateTime        @db.Date
+  weekStart  DateTime        @db.Date
+  minutes    Int
+  note       String?
+  billable   Boolean
+  source     TimeEntrySource @default(MANUAL)
+  flagged    Boolean         @default(false)
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+
+  @@index([orgId, employeeId, weekStart])
+  @@index([orgId, date])
+  @@index([orgId, projectId, date])
+}
+
+model RunningTimer {
+  id         String   @id @default(cuid())
+  orgId      String
+  employeeId String   @unique
+  taskId     String
+  task       TimeTask @relation(fields: [taskId], references: [id])
+  projectId  String
+  startedAt  DateTime
+  note       String?
+}
+
+model Timesheet {
+  id          String          @id @default(cuid())
+  orgId       String
+  employeeId  String
+  weekStart   DateTime        @db.Date
+  status      TimesheetStatus @default(DRAFT)
+  submittedAt DateTime?
+  decidedAt   DateTime?
+  decidedById String?
+  reason      String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@unique([employeeId, weekStart])
+  @@index([orgId, weekStart, status])
+}

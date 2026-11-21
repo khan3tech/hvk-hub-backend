@@ -21,6 +21,9 @@ export const NotificationTypeSchema = z.enum([
   "TICKET_UPDATED",
   "SURVEY_SENT",
   "REFERRAL_UPDATED",
+  // 028-time-tracker
+  "TIMESHEET_SUBMITTED",
+  "TIMESHEET_DECIDED",
 ]);
 export type NotificationType = z.infer<typeof NotificationTypeSchema>;
 
