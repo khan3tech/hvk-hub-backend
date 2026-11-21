@@ -3,7 +3,7 @@
 **Input**: plan.md, research.md, data-model.md, contracts/time-tracker-api.md. Backend only (frontend repo owns the UI).
 
 ## Phase 1: Setup
-- [X] T001 Prisma models `TimeProject`, `TimeProjectMember`, `TimeTask`, `TimeEntry`, `RunningTimer`, `Timesheet` + Employee back-relations; migration `time_tracker`
+- [X] T001 Prisma models `TimeProject`, `TimeProjectMember`, `TimeTask`, `TimeEntry`, `RunningTimer`, `Timesheet` (employee ids as plain columns, no relation to 002's table); migration `time_tracker`
 - [X] T002 Notification types `TIMESHEET_SUBMITTED`, `TIMESHEET_DECIDED` in `notifications/schema.ts`
 - [X] T003 `timetracking/week.ts`: org-local date, `weekStart`, week range, minutes between (R1/R2/R5)
 
