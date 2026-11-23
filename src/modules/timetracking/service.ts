@@ -424,6 +424,23 @@ export async function updateTimerNote(orgId: string, note: string, actor: Access
   return { timer: presentTimer(await repo.updateTimer(timer.id, { note: note || null })) };
 }
 
+// 030: read-only description of a task for another module's confirmation preview (the AI
+// assistant). Applies no RBAC beyond reporting membership — callers must not expose it raw.
+export async function describeTask(orgId: string, taskId: string, employeeId: string) {
+  const task = await repo.findTask(orgId, taskId);
+  if (!task) return null;
+  return {
+    taskId: task.id,
+    taskName: task.name,
+    projectId: task.projectId,
+    projectName: task.project.name,
+    projectCode: task.project.code,
+    billable: task.project.billable,
+    active: task.status === "ACTIVE" && task.project.status === "ACTIVE",
+    isMember: await repo.isMember(task.projectId, employeeId),
+  };
+}
+
 // 029 FR-010: remove idle minutes from the running timer by moving its start later (never past now).
 export async function trimTimer(orgId: string, minutes: number, actor: AccessTokenPayload) {
   const timer = await repo.findTimer(orgId, requireEmployee(actor));

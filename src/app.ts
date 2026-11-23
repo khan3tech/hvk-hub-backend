@@ -39,6 +39,7 @@ import { helpdeskRouter } from "./modules/helpdesk/routes.js";
 import { timeRouter } from "./modules/timetracking/routes.js";
 import { activityRouter } from "./modules/activity/routes.js";
 import { purgeExpired as purgeActivity } from "./modules/activity/service.js";
+import { purgeOldConversations } from "./modules/assistant/ai/chat.js";
 import { surveysRouter } from "./modules/surveys/routes.js";
 import { idempotency, purgeExpiredIdempotencyRecords } from "./middleware/idempotency.js";
 import { devicesRouter } from "./modules/devices/routes.js";
@@ -105,6 +106,9 @@ registerJob("exit-due-prompts", 60 * 60 * 1000, async () => {
 });
 registerJob("activity-retention", 60 * 60 * 1000, async () => {
   await purgeActivity(); // 029 FR-011: 90-day retention
+});
+registerJob("assistant-conversation-retention", 60 * 60 * 1000, async () => {
+  await purgeOldConversations(); // 030 FR-006: 90-day retention
 });
 
 // Constitution: Development Workflow "API documentation" — each module's routes.ts registers

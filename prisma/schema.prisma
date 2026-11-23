@@ -1746,3 +1746,22 @@ model ActivitySettings {
   idleThresholdMinutes Int      @default(5)
   updatedAt            DateTime @updatedAt
 }
+
+// 030-ai-assistant — one private chat per row: the model-visible history (replayed unchanged,
+// thinking blocks included), the messages shown to the user, and at most one pending action
+// awaiting the owner's confirmation. Deleted after 90 days without activity.
+model AssistantConversation {
+  id         String   @id @default(cuid())
+  orgId      String
+  userId     String
+  employeeId String?
+  title      String
+  history    Json
+  display    Json
+  pending    Json?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([orgId, userId, updatedAt])
+  @@index([updatedAt])
+}
