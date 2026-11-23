@@ -74,6 +74,9 @@ export async function stopTimer(req: Request, res: Response) {
 export async function updateTimer(req: Request, res: Response) {
   res.json(await service.updateTimerNote(orgOf(req), req.body.note, actorOf(req)));
 }
+export async function trimTimer(req: Request, res: Response) {
+  res.json(await service.trimTimer(orgOf(req), req.body.minutes, actorOf(req)));
+}
 export async function discardTimer(req: Request, res: Response) {
   await service.discardTimer(orgOf(req), actorOf(req));
   res.status(204).end();

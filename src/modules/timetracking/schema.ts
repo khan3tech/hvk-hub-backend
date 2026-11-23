@@ -67,6 +67,8 @@ export const EntriesQuerySchema = z.object({
 export const StartTimerRequestSchema = z.object({ taskId: z.string(), note: note.optional(), switch: z.boolean().optional() });
 export const StopTimerRequestSchema = z.object({ note: note.optional() });
 export const UpdateTimerRequestSchema = z.object({ note: note });
+// 029 FR-010
+export const TrimTimerRequestSchema = z.object({ minutes: z.number().int().min(1).max(1440) });
 
 export const WeekQuerySchema = z.object({ weekStart: isoDate.optional(), employeeId: z.string().optional() });
 export const SubmitRequestSchema = z.object({ weekStart: isoDate });

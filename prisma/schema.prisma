@@ -1709,3 +1709,40 @@ model Timesheet {
   @@unique([employeeId, weekStart])
   @@index([orgId, weekStart, status])
 }
+
+// 029-activity-presence — reported activity state as merged stretches, latest presence per
+// employee, per-org settings. Employee ids are plain columns (people come from 002's service).
+enum ActivityState {
+  ACTIVE
+  IDLE
+  LOCKED
+}
+
+model ActivitySpan {
+  id         String        @id @default(cuid())
+  orgId      String
+  employeeId String
+  state      ActivityState
+  startedAt  DateTime
+  endedAt    DateTime
+
+  @@index([orgId, employeeId, startedAt])
+  @@index([endedAt])
+}
+
+model ActivityPresence {
+  employeeId String        @id
+  orgId      String
+  state      ActivityState
+  lastSeenAt DateTime
+  spanId     String?
+
+  @@index([orgId])
+}
+
+model ActivitySettings {
+  orgId                String   @id
+  enabled              Boolean  @default(true)
+  idleThresholdMinutes Int      @default(5)
+  updatedAt            DateTime @updatedAt
+}

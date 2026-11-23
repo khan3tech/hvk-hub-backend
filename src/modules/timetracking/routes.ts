@@ -25,6 +25,7 @@ import {
   TeamQuerySchema,
   TeamRowSchema,
   TimerSchema,
+  TrimTimerRequestSchema,
   UpdateEntryRequestSchema,
   UpdateProjectRequestSchema,
   UpdateTaskRequestSchema,
@@ -59,6 +60,7 @@ timeRouter.get("/timer", handle(c.getTimer));
 timeRouter.post("/timer/start", validate(StartTimerRequestSchema), handle(c.startTimer));
 timeRouter.post("/timer/stop", validate(StopTimerRequestSchema), handle(c.stopTimer));
 timeRouter.patch("/timer", validate(UpdateTimerRequestSchema), handle(c.updateTimer));
+timeRouter.post("/timer/trim", validate(TrimTimerRequestSchema), handle(c.trimTimer));
 timeRouter.delete("/timer", handle(c.discardTimer));
 
 timeRouter.get("/timesheets/week", handle(c.getWeek));
@@ -89,6 +91,7 @@ documentRoute({ method: "post", path: `${p}/timer/start`, tag: TAG, description:
 documentRoute({ method: "post", path: `${p}/timer/stop`, tag: TAG, status: 200, description: "Stop your timer and save it as an entry (flagged if overnight or >12h).", body: StopTimerRequestSchema, response: z.object({ entry: EntrySchema }) });
 documentRoute({ method: "patch", path: `${p}/timer`, tag: TAG, description: "Update the running timer's note.", body: UpdateTimerRequestSchema, response: z.object({ timer: TimerSchema }) });
 documentRoute({ method: "delete", path: `${p}/timer`, tag: TAG, status: 204, description: "Discard your running timer without saving." });
+documentRoute({ method: "post", path: `${p}/timer/trim`, tag: TAG, status: 200, description: "029: remove idle minutes from your running timer (moves its start later, never past now).", body: TrimTimerRequestSchema, response: z.object({ timer: TimerSchema }) });
 documentRoute({ method: "get", path: `${p}/timesheets/week`, tag: TAG, description: "A week's timesheet (Mon–Sun) with entries, totals and allowed actions.", query: WeekQuerySchema, response: WeekSchema });
 documentRoute({ method: "post", path: `${p}/timesheets/submit`, tag: TAG, status: 200, description: "Submit your week for approval (locks it).", body: SubmitRequestSchema, response: WeekSchema });
 documentRoute({ method: "get", path: `${p}/timesheets/team`, tag: TAG, description: "Each direct report's (HR/Admin: everyone's) status and total for a week.", query: TeamQuerySchema, response: z.array(TeamRowSchema) });

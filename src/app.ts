@@ -37,6 +37,8 @@ import { orgChartRouter } from "./modules/orgchart/routes.js";
 import { setCriticalPositionsProvider } from "./modules/orgchart/service.js";
 import { helpdeskRouter } from "./modules/helpdesk/routes.js";
 import { timeRouter } from "./modules/timetracking/routes.js";
+import { activityRouter } from "./modules/activity/routes.js";
+import { purgeExpired as purgeActivity } from "./modules/activity/service.js";
 import { surveysRouter } from "./modules/surveys/routes.js";
 import { idempotency, purgeExpiredIdempotencyRecords } from "./middleware/idempotency.js";
 import { devicesRouter } from "./modules/devices/routes.js";
@@ -101,6 +103,9 @@ registerJob("idempotency-purge", 60 * 60 * 1000, async () => {
 registerJob("exit-due-prompts", 60 * 60 * 1000, async () => {
   await exit.promptExitsDue(); // 009 US2.3
 });
+registerJob("activity-retention", 60 * 60 * 1000, async () => {
+  await purgeActivity(); // 029 FR-011: 90-day retention
+});
 
 // Constitution: Development Workflow "API documentation" — each module's routes.ts registers
 // its endpoints on the shared OpenAPI registry (lib/openapi.ts) as part of implementing them,
@@ -160,6 +165,7 @@ export function createApp() {
   app.use("/api/org-chart", orgChartRouter);
   app.use("/api/helpdesk", helpdeskRouter);
   app.use("/api/time", timeRouter);
+  app.use("/api/activity", activityRouter);
   app.use("/api/surveys", surveysRouter);
   app.use("/api/devices", devicesRouter);
   app.use("/api/public/careers", careersRouter); // 020: no authentication

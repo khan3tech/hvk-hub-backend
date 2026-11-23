@@ -424,6 +424,15 @@ export async function updateTimerNote(orgId: string, note: string, actor: Access
   return { timer: presentTimer(await repo.updateTimer(timer.id, { note: note || null })) };
 }
 
+// 029 FR-010: remove idle minutes from the running timer by moving its start later (never past now).
+export async function trimTimer(orgId: string, minutes: number, actor: AccessTokenPayload) {
+  const timer = await repo.findTimer(orgId, requireEmployee(actor));
+  if (!timer) throw new DomainError("NO_TIMER", "You don't have a timer running.", 404);
+  const now = new Date();
+  const startedAt = new Date(Math.min(timer.startedAt.getTime() + minutes * 60_000, now.getTime()));
+  return { timer: presentTimer(await repo.updateTimer(timer.id, { startedAt }), now) };
+}
+
 export async function discardTimer(orgId: string, actor: AccessTokenPayload) {
   const timer = await repo.findTimer(orgId, requireEmployee(actor));
   if (!timer) throw new DomainError("NO_TIMER", "You don't have a timer running.", 404);
