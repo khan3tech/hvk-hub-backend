@@ -27,6 +27,16 @@ vi.mock("./repository.js", () => ({
   findHolidays: vi.fn(),
   createHoliday: vi.fn(),
   writeActivityLog: vi.fn(),
+  // Multiple check-ins and breaks per day (sessions).
+  transaction: vi.fn((fn: (tx: unknown) => unknown) => fn({})),
+  findOpenSession: vi.fn(),
+  listOpenSessionsBefore: vi.fn(),
+  createSession: vi.fn(),
+  closeSession: vi.fn(),
+  upsertDay: vi.fn(),
+  updateDay: vi.fn(),
+  findDayWithSessions: vi.fn(),
+  findAttendanceRangeWithSessions: vi.fn(),
 }));
 
 vi.mock("../employee/service.js", () => ({
@@ -46,6 +56,8 @@ const employeeService = await import("../employee/service.js");
 const {
   checkIn,
   checkOut,
+  startBreak,
+  endBreak,
   createLeaveRequest,
   approveLeaveRequest,
   rejectLeaveRequest,
@@ -92,49 +104,70 @@ function makeLeaveRequest(overrides: Partial<Record<string, unknown>> = {}) {
   };
 }
 
-describe("attendance service — checkIn/checkOut", () => {
+describe("attendance service — checkIn/checkOut and breaks", () => {
+  // Today in India time as the UTC-midnight date the service stores.
+  const today = moment.utc(moment().utcOffset(330).format("YYYY-MM-DD")).toDate();
+  const openWork = { id: "s1", kind: "WORK", checkIn: moment().subtract(30, "minutes").toDate(), attendance: { id: "att_1", date: today } };
+  const openBreak = { ...openWork, id: "s2", kind: "BREAK" };
+
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(repo.findDayWithSessions).mockResolvedValue(null);
+    vi.mocked(repo.upsertDay).mockResolvedValue({ id: "att_1", checkIn: null } as never);
   });
 
-  it("rejects a duplicate check-in for the same day", async () => {
-    vi.mocked(repo.findAttendanceByDay).mockResolvedValue({ checkIn: moment().toDate() } as never);
-
-    await expect(checkIn(ORG_ID, EMPLOYEE_ID)).rejects.toMatchObject({
-      code: "ALREADY_CHECKED_IN",
-      status: 409,
-    });
+  it("rejects a second check-in while already checked in", async () => {
+    vi.mocked(repo.findOpenSession).mockResolvedValue(openWork as never);
+    await expect(checkIn(ORG_ID, EMPLOYEE_ID)).rejects.toMatchObject({ code: "ALREADY_CHECKED_IN", status: 409 });
   });
 
-  it("allows check-in when no row exists yet today", async () => {
-    vi.mocked(repo.findAttendanceByDay).mockResolvedValue(null);
-    vi.mocked(repo.upsertAttendance).mockResolvedValue({ checkIn: moment().toDate() } as never);
-
+  it("allows checking in again after checking out (no open session)", async () => {
+    vi.mocked(repo.findOpenSession).mockResolvedValue(null);
+    vi.mocked(repo.upsertDay).mockResolvedValue({ id: "att_1", checkIn: moment().subtract(2, "hours").toDate() } as never);
     await checkIn(ORG_ID, EMPLOYEE_ID);
-
-    expect(repo.upsertAttendance).toHaveBeenCalled();
+    expect(repo.createSession).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ kind: "WORK", attendanceId: "att_1" }));
+    // The day's first check-in is kept; the last check-out is cleared while checked in again.
+    expect(repo.updateDay).toHaveBeenCalledWith(expect.anything(), "att_1", expect.objectContaining({ checkOut: null }));
   });
 
   it("rejects check-out when not checked in", async () => {
-    vi.mocked(repo.findAttendanceByDay).mockResolvedValue(null);
-
-    await expect(checkOut(ORG_ID, EMPLOYEE_ID)).rejects.toMatchObject({
-      code: "NOT_CHECKED_IN",
-      status: 409,
-    });
+    vi.mocked(repo.findOpenSession).mockResolvedValue(null);
+    await expect(checkOut(ORG_ID, EMPLOYEE_ID)).rejects.toMatchObject({ code: "NOT_CHECKED_IN", status: 409 });
   });
 
-  it("rejects a duplicate check-out for the same day", async () => {
-    vi.mocked(repo.findAttendanceByDay).mockResolvedValue({
-      id: "att_1",
-      checkIn: moment().toDate(),
-      checkOut: moment().toDate(),
-    } as never);
+  it("check-out closes the open session and adds its minutes to worked time", async () => {
+    vi.mocked(repo.findOpenSession).mockResolvedValue(openWork as never);
+    await checkOut(ORG_ID, EMPLOYEE_ID);
+    expect(repo.closeSession).toHaveBeenCalledWith(expect.anything(), "s1", expect.any(Date), false);
+    expect(repo.updateDay).toHaveBeenCalledWith(expect.anything(), "att_1", expect.objectContaining({ workedMinutes: { increment: 30 } }));
+  });
 
-    await expect(checkOut(ORG_ID, EMPLOYEE_ID)).rejects.toMatchObject({
-      code: "ALREADY_CHECKED_OUT",
-      status: 409,
-    });
+  it("check-in is refused while on a break", async () => {
+    vi.mocked(repo.findOpenSession).mockResolvedValue(openBreak as never);
+    await expect(checkIn(ORG_ID, EMPLOYEE_ID)).rejects.toMatchObject({ code: "ON_BREAK", status: 409 });
+  });
+
+  it("a break closes the work session and opens a BREAK session", async () => {
+    vi.mocked(repo.findOpenSession).mockResolvedValue(openWork as never);
+    await startBreak(ORG_ID, EMPLOYEE_ID);
+    expect(repo.createSession).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ kind: "BREAK" }));
+  });
+
+  it("ending a break adds break minutes (not worked minutes) and resumes work", async () => {
+    vi.mocked(repo.findOpenSession).mockResolvedValue(openBreak as never);
+    await endBreak(ORG_ID, EMPLOYEE_ID);
+    expect(repo.updateDay).toHaveBeenCalledWith(expect.anything(), "att_1", expect.objectContaining({ breakMinutes: { increment: 30 } }));
+    expect(repo.createSession).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ kind: "WORK" }));
+  });
+
+  it("a session left open on an earlier day is closed at 23:59:59 that day before a new check-in", async () => {
+    const yesterday = moment.utc(today).subtract(1, "day").toDate();
+    vi.mocked(repo.findOpenSession)
+      .mockResolvedValueOnce({ ...openWork, attendance: { id: "att_0", date: yesterday } } as never)
+      .mockResolvedValue(null);
+    await checkIn(ORG_ID, EMPLOYEE_ID);
+    const endOfYesterday = new Date(yesterday.getTime() + 24 * 3600_000 - 330 * 60_000 - 1);
+    expect(repo.closeSession).toHaveBeenCalledWith(expect.anything(), "s1", endOfYesterday, true);
   });
 });
 

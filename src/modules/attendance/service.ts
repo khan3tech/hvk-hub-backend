@@ -93,34 +93,158 @@ async function logActivity(params: {
 }
 
 // --- Attendance (User Story 1) ---
+// Multiple check-ins per day with breaks. A day is the org-local calendar day (India time), so it
+// resets at midnight there, not at 00:00 UTC. Each stretch is an AttendanceSession: WORK while
+// checked in, BREAK while on a break. At most one is open per employee (DB-enforced); one still
+// open when its day ends is closed at 23:59:59 that day (closeStaleSessions, or lazily on next use).
 
-export async function checkIn(orgId: string, employeeId: string) {
-  const today = todayUtc();
-  const existing = await repo.findAttendanceByDay(orgId, employeeId, today);
-  if (existing?.checkIn) {
-    throw new DomainError("ALREADY_CHECKED_IN", "You've already checked in today.", 409);
-  }
+const ORG_UTC_OFFSET_MIN = 330; // Asia/Kolkata, no DST
+const MINUTE = 60_000;
 
-  return repo.upsertAttendance({
-    orgId,
+// The org-local calendar date as the UTC-midnight Date Postgres stores in a @db.Date column.
+function todayLocal(now = new Date()): Date {
+  return moment.utc(moment(now).utcOffset(ORG_UTC_OFFSET_MIN).format("YYYY-MM-DD")).toDate();
+}
+
+// 23:59:59.999 org-local on `day` (a UTC-midnight date), as a UTC instant.
+function endOfLocalDay(day: Date): Date {
+  return new Date(day.getTime() + 24 * 60 * MINUTE - ORG_UTC_OFFSET_MIN * MINUTE - 1);
+}
+
+const minutesBetween = (from: Date, to: Date) => Math.max(0, Math.round((to.getTime() - from.getTime()) / MINUTE));
+
+export type AttendanceState = "OUT" | "WORKING" | "ON_BREAK";
+
+type DayWithSessions = NonNullable<Awaited<ReturnType<typeof repo.findDayWithSessions>>>;
+
+function presentDay(day: DayWithSessions | null, employeeId: string, date: Date, now = new Date()) {
+  const sessions = day?.sessions ?? [];
+  const open = sessions.find((x) => !x.checkOut);
+  const state: AttendanceState = !open ? "OUT" : open.kind === "BREAK" ? "ON_BREAK" : "WORKING";
+  // Live totals include the open session up to now.
+  const live = (kind: "WORK" | "BREAK") =>
+    sessions.filter((x) => x.kind === kind).reduce((sum, x) => sum + minutesBetween(x.checkIn, x.checkOut ?? now), 0);
+  return {
+    id: day?.id ?? `synthetic-${dateKey(date)}`,
     employeeId,
-    date: today,
-    data: { orgId, employeeId, date: today, checkIn: moment().toDate() },
+    date: dateKey(date),
+    checkIn: day?.checkIn ?? null,
+    checkOut: day?.checkOut ?? null,
+    status: day?.status ?? ("ABSENT" as const),
+    state,
+    workedMinutes: day ? live("WORK") : 0,
+    breakMinutes: day ? live("BREAK") : 0,
+    sessions: sessions.map((x) => ({ id: x.id, kind: x.kind, checkIn: x.checkIn, checkOut: x.checkOut, autoClosed: x.autoClosed })),
+  };
+}
+
+type OpenSession = { id: string; kind: "WORK" | "BREAK"; checkIn: Date; attendance: { id: string; date: Date } };
+
+// Closes a session and adds its minutes to the day's totals; the close time is the day's latest
+// check-out.
+async function closeAndTotal(tx: repo.Tx, session: OpenSession, at: Date, autoClosed = false) {
+  await repo.closeSession(tx, session.id, at, autoClosed);
+  const minutes = minutesBetween(session.checkIn, at);
+  await repo.updateDay(tx, session.attendance.id, {
+    ...(session.kind === "WORK" ? { workedMinutes: { increment: minutes } } : { breakMinutes: { increment: minutes } }),
+    checkOut: at,
   });
 }
 
-export async function checkOut(orgId: string, employeeId: string) {
-  const today = todayUtc();
-  const existing = await repo.findAttendanceByDay(orgId, employeeId, today);
-  if (!existing?.checkIn) {
-    throw new DomainError("NOT_CHECKED_IN", "You need to check in before checking out.", 409);
+// End-of-day reset: a session left open on an earlier day is closed at 23:59:59 of its own day.
+async function closeStaleFor(employeeId: string, today: Date) {
+  const open = await repo.findOpenSession(employeeId);
+  if (open && open.attendance.date < today) {
+    await repo.transaction((tx) => closeAndTotal(tx, open, endOfLocalDay(open.attendance.date), true));
   }
-  if (existing.checkOut) {
-    throw new DomainError("ALREADY_CHECKED_OUT", "You've already checked out today.", 409);
-  }
-
-  return repo.updateAttendance(existing.id, { checkOut: moment().toDate(), status: "PRESENT" });
 }
+
+export async function closeStaleSessions(now = new Date()) {
+  const today = todayLocal(now);
+  const stale = await repo.listOpenSessionsBefore(today);
+  for (const s of stale) {
+    await repo.transaction((tx) => closeAndTotal(tx, s, endOfLocalDay(s.attendance.date), true));
+  }
+  return stale.length;
+}
+
+async function todayView(employeeId: string) {
+  const date = todayLocal();
+  return presentDay(await repo.findDayWithSessions(employeeId, date), employeeId, date);
+}
+
+export async function getTodayAttendance(orgId: string, employeeId: string) {
+  await closeStaleFor(employeeId, todayLocal());
+  return todayView(employeeId);
+}
+
+// For other modules (029 activity tracking runs only while the employee is checked in and working).
+export async function getAttendanceState(employeeId: string): Promise<AttendanceState> {
+  const open = await repo.findOpenSession(employeeId);
+  if (!open || open.attendance.date < todayLocal()) return "OUT";
+  return open.kind === "BREAK" ? "ON_BREAK" : "WORKING";
+}
+
+// A unique-index violation means a concurrent request already opened a session.
+function isOpenSessionConflict(err: unknown) {
+  return typeof err === "object" && err !== null && (err as { code?: string }).code === "P2002";
+}
+
+export async function checkIn(orgId: string, employeeId: string) {
+  const date = todayLocal();
+  await closeStaleFor(employeeId, date);
+  const now = moment().toDate();
+  try {
+    await repo.transaction(async (tx) => {
+      const open = await repo.findOpenSession(employeeId, tx);
+      if (open?.kind === "BREAK") throw new DomainError("ON_BREAK", "You're on a break. End your break to continue working.", 409);
+      if (open) throw new DomainError("ALREADY_CHECKED_IN", "You're already checked in.", 409);
+      const day = await repo.upsertDay(tx, orgId, employeeId, date);
+      await repo.updateDay(tx, day.id, { checkIn: day.checkIn ?? now, checkOut: null, status: "PRESENT" });
+      await repo.createSession(tx, { orgId, employeeId, attendanceId: day.id, kind: "WORK", checkIn: now });
+    });
+  } catch (err) {
+    if (isOpenSessionConflict(err)) throw new DomainError("ALREADY_CHECKED_IN", "You're already checked in.", 409);
+    throw err;
+  }
+  return todayView(employeeId);
+}
+
+export async function checkOut(orgId: string, employeeId: string) {
+  await closeStaleFor(employeeId, todayLocal());
+  await repo.transaction(async (tx) => {
+    const open = await repo.findOpenSession(employeeId, tx);
+    if (!open) throw new DomainError("NOT_CHECKED_IN", "You need to check in before checking out.", 409);
+    await closeAndTotal(tx, open, moment().toDate());
+  });
+  return todayView(employeeId);
+}
+
+async function switchSession(orgId: string, employeeId: string, from: "WORK" | "BREAK") {
+  await closeStaleFor(employeeId, todayLocal());
+  try {
+    await repo.transaction(async (tx) => {
+      const open = await repo.findOpenSession(employeeId, tx);
+      if (from === "WORK") {
+        if (!open) throw new DomainError("NOT_CHECKED_IN", "Check in before starting a break.", 409);
+        if (open.kind === "BREAK") throw new DomainError("ALREADY_ON_BREAK", "You're already on a break.", 409);
+      } else if (!open || open.kind !== "BREAK") {
+        throw new DomainError("NOT_ON_BREAK", "You're not on a break.", 409);
+      }
+      const now = moment().toDate();
+      await closeAndTotal(tx, open, now);
+      await repo.updateDay(tx, open.attendance.id, { checkOut: null }); // still checked in
+      await repo.createSession(tx, { orgId, employeeId, attendanceId: open.attendance.id, kind: from === "WORK" ? "BREAK" : "WORK", checkIn: now });
+    });
+  } catch (err) {
+    if (isOpenSessionConflict(err)) throw new DomainError("CONFLICT", "That was already done. Refresh to see the latest.", 409);
+    throw err;
+  }
+  return todayView(employeeId);
+}
+
+export const startBreak = (orgId: string, employeeId: string) => switchSession(orgId, employeeId, "WORK");
+export const endBreak = (orgId: string, employeeId: string) => switchSession(orgId, employeeId, "BREAK");
 
 export async function getAttendanceHistory(
   orgId: string,
@@ -128,10 +252,11 @@ export async function getAttendanceHistory(
   from?: string,
   to?: string,
 ) {
-  const rangeStart = from ? startOfDay(from) : moment.utc().startOf("month").toDate();
-  const rangeEnd = to ? startOfDay(to) : todayUtc();
+  const rangeStart = from ? startOfDay(from) : moment.utc(todayLocal()).startOf("month").toDate();
+  const rangeEnd = to ? startOfDay(to) : todayLocal();
 
-  const records = await repo.findAttendanceRange(orgId, employeeId, rangeStart, rangeEnd);
+  await closeStaleFor(employeeId, todayLocal());
+  const records = await repo.findAttendanceRangeWithSessions(orgId, employeeId, rangeStart, rangeEnd);
   const byDate = new Map(records.map((r) => [dateKey(r.date), r]));
 
   const result = [];
@@ -139,12 +264,7 @@ export async function getAttendanceHistory(
   const end = moment.utc(rangeEnd);
   while (cursor.isSameOrBefore(end)) {
     const key = cursor.format("YYYY-MM-DD");
-    const record = byDate.get(key);
-    result.push(
-      record
-        ? { id: record.id, employeeId, date: key, checkIn: record.checkIn, checkOut: record.checkOut, status: record.status }
-        : { id: `synthetic-${key}`, employeeId, date: key, checkIn: null, checkOut: null, status: "ABSENT" as const },
-    );
+    result.push(presentDay(byDate.get(key) ?? null, employeeId, cursor.toDate()));
     cursor.add(1, "day");
   }
   return result;

@@ -43,4 +43,10 @@ export const TeamRowSchema = z.object({
   lastSeenAt: z.string().datetime().nullable(),
   ...DaySummary,
 });
-export const HeartbeatResponseSchema = z.object({ recorded: z.boolean(), presence: PresenceSchema.nullable(), settings: SettingsSchema });
+export const HeartbeatResponseSchema = z.object({
+  recorded: z.boolean(),
+  presence: PresenceSchema.nullable(),
+  settings: SettingsSchema,
+  // Tracking runs only while WORKING (checked in, not on a break); null when tracking is off.
+  attendanceState: z.enum(["OUT", "WORKING", "ON_BREAK"]).nullable(),
+});

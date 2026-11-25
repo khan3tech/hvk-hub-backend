@@ -25,6 +25,7 @@ import { onEmployeeCreated, onEmployeeOffboarded, registerEmployeeDecorator } fr
 import * as onboarding from "./modules/onboarding/service.js";
 import { exitRouter } from "./modules/exit/routes.js";
 import * as exit from "./modules/exit/service.js";
+import { closeStaleSessions } from "./modules/attendance/service.js";
 import { registerJob } from "./lib/scheduler.js";
 import { statutoryRouter } from "./modules/statutory/routes.js";
 import { analyticsRouter } from "./modules/analytics/routes.js";
@@ -109,6 +110,9 @@ registerJob("activity-retention", 60 * 60 * 1000, async () => {
 });
 registerJob("assistant-conversation-retention", 60 * 60 * 1000, async () => {
   await purgeOldConversations(); // 030 FR-006: 90-day retention
+});
+registerJob("attendance-end-of-day", 5 * 60 * 1000, async () => {
+  await closeStaleSessions(); // a session left open closes at 23:59:59 India time of its day
 });
 
 // Constitution: Development Workflow "API documentation" — each module's routes.ts registers

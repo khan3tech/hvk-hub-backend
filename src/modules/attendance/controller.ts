@@ -32,6 +32,21 @@ export async function checkOut(req: Request, res: Response): Promise<void> {
   res.json(result);
 }
 
+export async function startBreak(req: Request, res: Response): Promise<void> {
+  const actor = req.user as AccessTokenPayload;
+  res.json(await attendanceService.startBreak(getOrgId(req), requireEmployeeId(actor)));
+}
+
+export async function endBreak(req: Request, res: Response): Promise<void> {
+  const actor = req.user as AccessTokenPayload;
+  res.json(await attendanceService.endBreak(getOrgId(req), requireEmployeeId(actor)));
+}
+
+export async function getToday(req: Request, res: Response): Promise<void> {
+  const actor = req.user as AccessTokenPayload;
+  res.json(await attendanceService.getTodayAttendance(getOrgId(req), requireEmployeeId(actor)));
+}
+
 export async function getMyAttendance(req: Request, res: Response): Promise<void> {
   const actor = req.user as AccessTokenPayload;
   const { from, to } = req.query as Record<string, string | undefined>;

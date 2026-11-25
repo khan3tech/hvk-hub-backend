@@ -12,6 +12,19 @@ export const AttendanceRecordSchema = z.object({
   checkIn: z.string().datetime().nullable(),
   checkOut: z.string().datetime().nullable(),
   status: AttendanceStatusSchema,
+  // Multiple check-ins and breaks per day.
+  state: z.enum(["OUT", "WORKING", "ON_BREAK"]),
+  workedMinutes: z.number().int(),
+  breakMinutes: z.number().int(),
+  sessions: z.array(
+    z.object({
+      id: z.string(),
+      kind: z.enum(["WORK", "BREAK"]),
+      checkIn: z.string().datetime(),
+      checkOut: z.string().datetime().nullable(),
+      autoClosed: z.boolean(),
+    }),
+  ),
 });
 export type AttendanceRecord = z.infer<typeof AttendanceRecordSchema>;
 

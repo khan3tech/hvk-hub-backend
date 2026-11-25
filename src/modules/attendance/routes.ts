@@ -33,6 +33,20 @@ attendanceRouter.post("/check-out", authenticate, (req, res, next) => {
   controller.checkOut(req, res).catch(next);
 });
 
+// Breaks while checked in (time on a break isn't worked time).
+attendanceRouter.post("/break/start", authenticate, (req, res, next) => {
+  controller.startBreak(req, res).catch(next);
+});
+
+attendanceRouter.post("/break/end", authenticate, (req, res, next) => {
+  controller.endBreak(req, res).catch(next);
+});
+
+// Today's state (OUT / WORKING / ON_BREAK), sessions and live totals.
+attendanceRouter.get("/today", authenticate, (req, res, next) => {
+  controller.getToday(req, res).catch(next);
+});
+
 attendanceRouter.get("/me", authenticate, (req, res, next) => {
   controller.getMyAttendance(req, res).catch(next);
 });
@@ -117,7 +131,7 @@ registry.registerPath({
   method: "post",
   path: "/attendance/check-in",
   tags: ["Attendance & Leave"],
-  description: "Record a check-in for today.",
+  description: "Check in (start a work session). Allowed again after checking out; 409 ALREADY_CHECKED_IN while checked in, ON_BREAK while on a break.",
   security: [{ [bearerAuth.name]: [] }],
   responses: {
     201: { description: "Checked in.", content: { "application/json": { schema: AttendanceRecordSchema } } },
@@ -128,11 +142,34 @@ registry.registerPath({
   method: "post",
   path: "/attendance/check-out",
   tags: ["Attendance & Leave"],
-  description: "Record a check-out for today.",
+  description: "Check out (close the open work or break session). 409 NOT_CHECKED_IN.",
   security: [{ [bearerAuth.name]: [] }],
   responses: {
     200: { description: "Checked out.", content: { "application/json": { schema: AttendanceRecordSchema } } },
   },
+});
+
+for (const [path, description] of [
+  ["/attendance/break/start", "Start a break while checked in (break time isn't worked time). 409 NOT_CHECKED_IN / ALREADY_ON_BREAK."],
+  ["/attendance/break/end", "End the current break and continue working. 409 NOT_ON_BREAK."],
+] as const) {
+  registry.registerPath({
+    method: "post",
+    path,
+    tags: ["Attendance & Leave"],
+    description,
+    security: [{ [bearerAuth.name]: [] }],
+    responses: { 200: { description: "Today's attendance.", content: { "application/json": { schema: AttendanceRecordSchema } } } },
+  });
+}
+
+registry.registerPath({
+  method: "get",
+  path: "/attendance/today",
+  tags: ["Attendance & Leave"],
+  description: "Today's state (OUT, WORKING, ON_BREAK), sessions and live worked/break minutes. The day resets at midnight India time; an open session is closed at 23:59:59.",
+  security: [{ [bearerAuth.name]: [] }],
+  responses: { 200: { description: "Today.", content: { "application/json": { schema: AttendanceRecordSchema } } } },
 });
 
 registry.registerPath({

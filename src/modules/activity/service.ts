@@ -3,6 +3,7 @@
 import type { ActivityState } from "@prisma/client";
 import { DomainError } from "../../middleware/errorHandler.js";
 import { getEmployeeSummary, listActiveEmployeeSummaries, listDirectReportIds } from "../employee/service.js";
+import { getAttendanceState } from "../attendance/service.js";
 import type { AccessTokenPayload } from "../../lib/jwt.js";
 import { localDate, toDbDate } from "../timetracking/week.js";
 import * as repo from "./repository.js";
@@ -110,7 +111,12 @@ export async function heartbeat(orgId: string, state: ActivityState, actor: Acce
   const employeeId = requireEmployee(actor);
   const [me, settings] = await Promise.all([getEmployeeSummary(orgId, employeeId), getSettings(orgId)]);
   if (!me || me.status !== "ACTIVE") throw new DomainError("EMPLOYEE_INACTIVE", "Only active employees report activity.", 403);
-  if (!settings.enabled) return { recorded: false, presence: null, settings };
+  if (!settings.enabled) return { recorded: false, presence: null, settings, attendanceState: null };
+
+  // The tracker runs only while checked in and working: nothing is recorded before check-in,
+  // after check-out, or during a break. Idle time is recorded as IDLE (never counted as active).
+  const attendanceState = await getAttendanceState(employeeId);
+  if (attendanceState !== "WORKING") return { recorded: false, presence: null, settings, attendanceState };
 
   const now = new Date();
   const result = await repo.transaction(async (tx) => {
@@ -142,6 +148,7 @@ export async function heartbeat(orgId: string, state: ActivityState, actor: Acce
       lastSeenAt: result.presence.lastSeenAt.toISOString(),
     },
     settings,
+    attendanceState,
   };
 }
 

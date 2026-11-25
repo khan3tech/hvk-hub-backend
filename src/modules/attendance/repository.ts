@@ -176,3 +176,60 @@ export function findApprovedLeaveStartingIn(orgId: string, from: Date, to: Date)
     select: { employeeId: true, leaveTypeId: true, days: true, startDate: true },
   });
 }
+
+// --- Attendance sessions (multiple check-ins and breaks per day) ---
+
+export type Tx = Prisma.TransactionClient;
+
+export function transaction<T>(fn: (tx: Tx) => Promise<T>) {
+  return prisma.$transaction(fn);
+}
+
+export function findOpenSession(employeeId: string, tx?: Tx) {
+  return (tx ?? prisma).attendanceSession.findFirst({
+    where: { employeeId, checkOut: null },
+    include: { attendance: { select: { id: true, date: true } } },
+  });
+}
+
+export function listOpenSessionsBefore(day: Date) {
+  return prisma.attendanceSession.findMany({
+    where: { checkOut: null, attendance: { date: { lt: day } } },
+    include: { attendance: { select: { id: true, date: true } } },
+  });
+}
+
+export function createSession(tx: Tx, data: Prisma.AttendanceSessionUncheckedCreateInput) {
+  return tx.attendanceSession.create({ data });
+}
+
+export function closeSession(tx: Tx, id: string, checkOut: Date, autoClosed = false) {
+  return tx.attendanceSession.update({ where: { id }, data: { checkOut, autoClosed } });
+}
+
+export function upsertDay(tx: Tx, orgId: string, employeeId: string, date: Date) {
+  return tx.attendance.upsert({
+    where: { employeeId_date: { employeeId, date } },
+    create: { orgId, employeeId, date, status: "PRESENT" },
+    update: {},
+  });
+}
+
+export function updateDay(tx: Tx, id: string, data: Prisma.AttendanceUncheckedUpdateInput) {
+  return tx.attendance.update({ where: { id }, data });
+}
+
+export function findDayWithSessions(employeeId: string, date: Date) {
+  return prisma.attendance.findUnique({
+    where: { employeeId_date: { employeeId, date } },
+    include: { sessions: { orderBy: { checkIn: "asc" } } },
+  });
+}
+
+export function findAttendanceRangeWithSessions(orgId: string, employeeId: string, from: Date, to: Date) {
+  return prisma.attendance.findMany({
+    where: { orgId, employeeId, date: { gte: from, lte: to } },
+    orderBy: { date: "asc" },
+    include: { sessions: { orderBy: { checkIn: "asc" } } },
+  });
+}

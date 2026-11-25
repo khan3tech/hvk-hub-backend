@@ -244,17 +244,45 @@ model Designation {
 }
 
 model Attendance {
-  id         String           @id @default(cuid())
-  orgId      String
-  employeeId String
-  employee   Employee         @relation(fields: [employeeId], references: [id])
-  date       DateTime         @db.Date
-  checkIn    DateTime?
-  checkOut   DateTime?
-  status     AttendanceStatus @default(PRESENT)
+  id            String              @id @default(cuid())
+  orgId         String
+  employeeId    String
+  employee      Employee            @relation(fields: [employeeId], references: [id])
+  date          DateTime            @db.Date
+  checkIn       DateTime?
+  checkOut      DateTime?
+  status        AttendanceStatus    @default(PRESENT)
+  // Multiple check-in/out sessions per day: checkIn = first check-in, checkOut = last check-out
+  // (null while a session is open), workedMinutes = sum of closed sessions.
+  workedMinutes Int                 @default(0)
+  breakMinutes  Int                 @default(0)
+  sessions      AttendanceSession[]
 
   @@unique([employeeId, date])
   @@index([orgId, date])
+}
+
+enum AttendanceSessionKind {
+  WORK
+  BREAK
+}
+
+// A stretch of the day: WORK (checked in) or BREAK (on a break while checked in). At most one is
+// open (checkOut null) per employee. One left open at the end of the org-local day is closed
+// automatically at 23:59:59 (autoClosed) so the next day starts fresh.
+model AttendanceSession {
+  id           String                @id @default(cuid())
+  orgId        String
+  employeeId   String
+  attendanceId String
+  attendance   Attendance            @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
+  kind         AttendanceSessionKind @default(WORK)
+  checkIn      DateTime
+  checkOut     DateTime?
+  autoClosed   Boolean               @default(false)
+
+  @@index([attendanceId])
+  @@index([employeeId, checkOut])
 }
 
 model LeaveType {
