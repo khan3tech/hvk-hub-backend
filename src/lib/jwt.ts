@@ -10,6 +10,9 @@ export interface AccessTokenPayload {
   // 015: the tenant every request is scoped to. Always set on newly signed tokens; optional
   // only so pre-015 tokens (≤15 min old at rollout) and test fixtures still type-check.
   orgId?: string;
+  // Temporary password in use: every endpoint except /auth/me, /auth/change-password and
+  // /auth/logout answers 403 PASSWORD_CHANGE_REQUIRED (middleware/authenticate.ts).
+  pwc?: boolean;
 }
 
 export interface RefreshTokenPayload {

@@ -55,6 +55,7 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
       role: stored.user.role as AccessTokenPayload["role"],
       employeeId: stored.user.employeeId,
       orgId: stored.user.orgId,
+      ...(stored.user.mustChangePassword ? { pwc: true } : {}),
     };
   }
 
@@ -83,6 +84,16 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
     }
   }
 
+  // A temporary password must be replaced before anything else is allowed.
+  if (payload.pwc && !PASSWORD_CHANGE_ALLOWED.has(`${req.baseUrl}${req.path}`.replace(/\/+$/, ""))) {
+    res.status(403).json({
+      error: { code: "PASSWORD_CHANGE_REQUIRED", message: "Set a new password to continue." },
+    });
+    return;
+  }
+
   req.user = payload;
   next();
 }
+
+const PASSWORD_CHANGE_ALLOWED = new Set(["/api/auth/me", "/api/auth/change-password", "/api/auth/logout"]);

@@ -40,6 +40,13 @@ export function lockUser(userId: string) {
   });
 }
 
+export function setPassword(userId: string, passwordHash: string, mustChangePassword: boolean) {
+  return prisma.user.update({
+    where: { id: userId },
+    data: { passwordHash, mustChangePassword, passwordChangedAt: mustChangePassword ? undefined : new Date(), failedLoginAttempts: 0 },
+  });
+}
+
 export function unlockUser(userId: string) {
   return prisma.user.update({
     where: { id: userId },

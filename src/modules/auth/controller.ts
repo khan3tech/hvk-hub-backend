@@ -70,7 +70,19 @@ export async function me(req: Request, res: Response): Promise<void> {
   if (!user) {
     throw new DomainError("UNAUTHENTICATED", "Sign-in required.", 401);
   }
-  res.json({ id: user.id, email: user.email, role: user.role, employeeId: user.employeeId });
+  res.json({ id: user.id, email: user.email, role: user.role, employeeId: user.employeeId, mustChangePassword: user.mustChangePassword });
+}
+
+export async function changePassword(req: Request, res: Response): Promise<void> {
+  const payload = req.user as AccessTokenPayload;
+  const result = await authService.changePassword(orgOf(req), payload.sub, req.body.currentPassword, req.body.newPassword);
+  setSessionCookie(res, result.refreshToken);
+  res.json({ accessToken: result.accessToken, user: result.user });
+}
+
+export async function resetPassword(req: Request, res: Response): Promise<void> {
+  const result = await authService.resetPasswordForEmployee(orgOf(req), req.params.employeeId ?? "", req.user as AccessTokenPayload);
+  res.json(result);
 }
 
 export async function unlock(req: Request, res: Response): Promise<void> {

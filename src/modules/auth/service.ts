@@ -1,6 +1,7 @@
 // Business rules for the auth module. Framework-agnostic — no req/res.
 // Calls repository.ts for persistence; never imports Prisma directly.
 // Implements the functional requirements (FR-xxx) in specs/001-auth-rbac/spec.md.
+import { randomBytes } from "node:crypto";
 import bcrypt from "bcrypt";
 import moment from "moment";
 import { DomainError } from "../../middleware/errorHandler.js";
@@ -85,7 +86,7 @@ export async function completeSignIn(orgId: string, userId: string, method: "pas
 
 async function signInUser(
   orgId: string,
-  user: { id: string; email: string; role: string; employeeId: string | null },
+  user: { id: string; email: string; role: string; employeeId: string | null; mustChangePassword?: boolean },
   method: "password" | "mfa" | "sso",
   deviceId: string | null = null,
 ) {
@@ -100,6 +101,7 @@ async function signInUser(
     role: user.role as AccessTokenPayload["role"],
     employeeId: user.employeeId,
     orgId,
+    ...(user.mustChangePassword ? { pwc: true } : {}),
   };
   const accessToken = signAccessToken(accessPayload, getSecret("JWT_ACCESS_SECRET"));
 
@@ -119,6 +121,7 @@ async function signInUser(
       email: user.email,
       role: user.role,
       employeeId: user.employeeId,
+      mustChangePassword: Boolean(user.mustChangePassword),
     },
   };
 }
@@ -253,6 +256,7 @@ export async function refresh(rawRefreshToken: string) {
     role: stored.user.role as AccessTokenPayload["role"],
     employeeId: stored.user.employeeId,
     orgId,
+    ...(stored.user.mustChangePassword ? { pwc: true } : {}),
   };
   const accessToken = signAccessToken(accessPayload, getSecret("JWT_ACCESS_SECRET"));
 
@@ -278,7 +282,50 @@ export async function revokeAllSessionsForUser(userId: string) {
 export async function getUserById(orgId: string, userId: string) {
   const user = await repo.findUserById(orgId, userId);
   if (!user) return null;
-  return { id: user.id, email: user.email, role: user.role, employeeId: user.employeeId };
+  return { id: user.id, email: user.email, role: user.role, employeeId: user.employeeId, mustChangePassword: user.mustChangePassword };
+}
+
+// --- Passwords ---
+
+// At least 8 characters with a letter and a number; not the same as the current one.
+export function passwordProblem(password: string): string | null {
+  if (password.length < 8) return "Use at least 8 characters.";
+  if (password.length > 128) return "Use at most 128 characters.";
+  if (!/[A-Za-z]/.test(password) || !/\d/.test(password)) return "Use at least one letter and one number.";
+  return null;
+}
+
+// The signed-in user replaces their password (required after a temporary one). Every other
+// session ends; this device gets a fresh session without the change-required flag.
+export async function changePassword(orgId: string, userId: string, currentPassword: string, newPassword: string) {
+  const user = await repo.findUserById(orgId, userId);
+  if (!user) throw new DomainError("UNAUTHENTICATED", "Sign-in required.", 401);
+  if (!(await bcrypt.compare(currentPassword, user.passwordHash))) {
+    throw new DomainError("WRONG_PASSWORD", "Your current password is incorrect.", 400, { currentPassword: ["Incorrect password."] });
+  }
+  const problem = passwordProblem(newPassword);
+  if (problem) throw new DomainError("WEAK_PASSWORD", problem, 400, { newPassword: [problem] });
+  if (await bcrypt.compare(newPassword, user.passwordHash)) {
+    throw new DomainError("SAME_PASSWORD", "Choose a password different from your current one.", 400, { newPassword: ["Must differ from the current password."] });
+  }
+  const updated = await repo.setPassword(user.id, await bcrypt.hash(newPassword, 12), false);
+  await logActivity({ orgId, actorEmployeeId: user.employeeId, action: "auth.password_changed", entityId: user.id, after: { at: moment().toISOString() } });
+  return signInUser(orgId, updated, "password");
+}
+
+// HR/Admin issue a new temporary password for an employee's account: it must be changed at the
+// next sign-in, the account is unlocked, and every session of that user ends.
+export async function resetPasswordForEmployee(orgId: string, employeeId: string, actor: AccessTokenPayload) {
+  const target = await repo.findUserByEmployeeId(orgId, employeeId);
+  if (!target) throw new DomainError("NOT_FOUND", "This employee has no sign-in account.", 404);
+  if (target.id === actor.sub) throw new DomainError("OWN_ACCOUNT", "Use Change password for your own account.", 400);
+  if (target.role === "ADMIN" && actor.role !== "ADMIN") throw new DomainError("FORBIDDEN", "Only an Admin can reset an Admin's password.", 403);
+  const temporaryPassword = randomBytes(9).toString("base64url");
+  await repo.setPassword(target.id, await bcrypt.hash(temporaryPassword, 12), true);
+  await repo.unlockUser(target.id);
+  await repo.revokeAllRefreshTokensForUser(target.id);
+  await logActivity({ orgId, actorEmployeeId: actor.employeeId, action: "auth.password_reset", entityId: target.id, after: { at: moment().toISOString() } });
+  return { email: target.email, temporaryPassword };
 }
 
 export async function unlockUser(orgId: string, targetUserId: string, actor: AccessTokenPayload) {

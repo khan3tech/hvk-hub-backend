@@ -7,6 +7,8 @@ import { authorize } from "../../middleware/authorize.js";
 import { validate } from "../../middleware/validate.js";
 import * as controller from "./controller.js";
 import {
+  ChangePasswordRequestSchema,
+  ResetPasswordResponseSchema,
   LoginRequestSchema,
   LoginResponseSchema,
   RefreshResponseSchema,
@@ -43,6 +45,16 @@ authRouter.post("/logout", authenticate, (req, res, next) => {
 
 authRouter.get("/me", authenticate, (req, res, next) => {
   controller.me(req, res).catch(next);
+});
+
+// The signed-in user sets a new password (required after a temporary one).
+authRouter.post("/change-password", authenticate, validate(ChangePasswordRequestSchema), (req, res, next) => {
+  controller.changePassword(req, res).catch(next);
+});
+
+// HR/Admin issue a new temporary password for an employee (must be changed at next sign-in).
+authRouter.post("/employees/:employeeId/reset-password", authenticate, authorize("ADMIN", "HR"), (req, res, next) => {
+  controller.resetPassword(req, res).catch(next);
 });
 
 authRouter.post("/:userId/unlock", authenticate, authorize("ADMIN", "HR"), (req, res, next) => {
@@ -96,4 +108,28 @@ registry.registerPath({
   responses: {
     200: { description: "Unlocked.", content: { "application/json": { schema: UnlockResponseSchema } } },
   },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/auth/change-password",
+  tags: ["Auth"],
+  description:
+    "Change your own password (8+ characters, a letter and a number, different from the current one). Required after a temporary password: until then other endpoints answer 403 PASSWORD_CHANGE_REQUIRED. Ends other sessions and returns a fresh one.",
+  security: [{ [bearerAuth.name]: [] }],
+  request: { body: { content: { "application/json": { schema: ChangePasswordRequestSchema } } } },
+  responses: {
+    200: { description: "Password changed; new session.", content: { "application/json": { schema: LoginResponseSchema } } },
+    400: { description: "WRONG_PASSWORD, WEAK_PASSWORD or SAME_PASSWORD." },
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/auth/employees/{employeeId}/reset-password",
+  tags: ["Auth"],
+  description: "Admin/HR: issue a new temporary password for an employee (shown once). It must be changed at next sign-in; the account is unlocked and all its sessions end. Only an Admin can reset an Admin.",
+  security: [{ [bearerAuth.name]: [] }],
+  request: { params: z.object({ employeeId: z.string() }) },
+  responses: { 200: { description: "Temporary password.", content: { "application/json": { schema: ResetPasswordResponseSchema } } } },
 });

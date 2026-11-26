@@ -156,6 +156,8 @@ export async function createEmployee(
         email: input.email.toLowerCase(),
         passwordHash,
         role: input.role ?? "EMPLOYEE",
+        // The temporary password must be replaced at first sign-in.
+        mustChangePassword: true,
       },
     },
   } as never);

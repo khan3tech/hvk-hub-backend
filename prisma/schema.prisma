@@ -96,6 +96,10 @@ model User {
   // flag and its timestamp; no automatic unlock, only a manual Admin/HR action resets it.
   failedLoginAttempts Int            @default(0)
   lockedAt            DateTime?
+  // Set when HR issues a temporary password (account creation or reset); the user must choose
+  // their own password before using anything else. Cleared by a successful password change.
+  mustChangePassword  Boolean        @default(false)
+  passwordChangedAt   DateTime?
   refreshTokens       RefreshToken[]
 
   // 013-sso-mfa

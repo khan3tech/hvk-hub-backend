@@ -34,6 +34,13 @@ export const RefreshResponseSchema = z.object({
 });
 export type RefreshResponse = z.infer<typeof RefreshResponseSchema>;
 
+export const ChangePasswordRequestSchema = z.object({
+  currentPassword: z.string().min(1).max(200),
+  newPassword: z.string().min(1).max(200),
+});
+
+export const ResetPasswordResponseSchema = z.object({ email: z.string(), temporaryPassword: z.string() });
+
 export const UnlockResponseSchema = z.object({
   id: z.string(),
   lockedAt: z.null(),
