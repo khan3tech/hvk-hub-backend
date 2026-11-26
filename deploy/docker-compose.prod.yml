@@ -22,6 +22,11 @@ services:
       NODE_ENV: production
       PORT: 4000
       TRUST_PROXY: 1
+      # Uploaded files (HR documents, profile pictures) live on a named volume so they survive
+      # redeploys; the container filesystem is replaced on every build.
+      STORAGE_DIR: /app/storage
+    volumes:
+      - storage-data:/app/storage
     depends_on:
       postgres:
         condition: service_healthy
@@ -42,5 +47,6 @@ services:
 
 volumes:
   postgres-data:
+  storage-data:
   caddy-data:
   caddy-config:

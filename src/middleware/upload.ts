@@ -62,3 +62,31 @@ export function uploadFile(required: boolean) {
     });
   };
 }
+
+// Profile pictures: one image (JPEG, PNG or WebP), checked by declared type *and* leading bytes.
+const IMAGE_SIGNATURES: Record<string, (b: Buffer) => boolean> = {
+  "image/png": SIGNATURES["image/png"]!,
+  "image/jpeg": SIGNATURES["image/jpeg"]!,
+  "image/webp": (b) => b.subarray(0, 4).toString("latin1") === "RIFF" && b.subarray(8, 12).toString("latin1") === "WEBP",
+};
+
+export function uploadImage(maxBytes: number) {
+  const imageParser = multer({ storage: multer.memoryStorage(), limits: { fileSize: maxBytes, files: 1, fields: 2 } }).single("file");
+  return (req: Request, res: Response, next: NextFunction): void => {
+    imageParser(req, res, (err: unknown) => {
+      if (err instanceof multer.MulterError) {
+        if (err.code === "LIMIT_FILE_SIZE") {
+          return next(new DomainError("FILE_TOO_LARGE", `Images must be ${Math.floor(maxBytes / 1024 / 1024)} MB or smaller.`, 413));
+        }
+        return next(new DomainError("UPLOAD_INVALID", "Upload must be multipart/form-data with one 'file'.", 400));
+      }
+      if (err) return next(err);
+      const file = req.file;
+      if (!file) return next(new DomainError("FILE_REQUIRED", "Attach an image in the 'file' field.", 400));
+      const check = IMAGE_SIGNATURES[file.mimetype];
+      if (!check) return next(new DomainError("UNSUPPORTED_FILE_TYPE", "Use a JPEG, PNG or WebP image.", 415));
+      if (!check(file.buffer)) return next(new DomainError("UNSUPPORTED_FILE_TYPE", "The file's contents don't match its declared type.", 415));
+      next();
+    });
+  };
+}

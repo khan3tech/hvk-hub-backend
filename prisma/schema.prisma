@@ -154,6 +154,13 @@ model Employee {
   dateOfJoining DateTime
   status        EmployeeStatus @default(ACTIVE)
 
+  // Profile picture uploaded by the employee (stored via lib/storage). photoUpdatedAt doubles as
+  // a cache-busting version for clients.
+  photoKey         String?
+  photoContentType String?
+  photoUpdatedAt   DateTime?
+  personalDetails  EmployeePersonalDetails?
+
   // 026-global-multi-currency-payroll: effective-dated country/currency (FR-001, US1.3)
   payrollAssignments PayrollAssignment[]
 
@@ -1796,4 +1803,26 @@ model AssistantConversation {
 
   @@index([orgId, userId, updatedAt])
   @@index([updatedAt])
+}
+
+// Personal details the employee maintains themselves on My profile (job details stay HR-only).
+// Visible to the employee and HR/Admin only.
+model EmployeePersonalDetails {
+  employeeId               String    @id
+  employee                 Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  orgId                    String
+  phone                    String?
+  personalEmail            String?
+  dateOfBirth              DateTime? @db.Date
+  gender                   String?
+  bloodGroup               String?
+  maritalStatus            String?
+  currentAddress           String?
+  permanentAddress         String?
+  emergencyContactName     String?
+  emergencyContactRelation String?
+  emergencyContactPhone    String?
+  updatedAt                DateTime  @updatedAt
+
+  @@index([orgId])
 }

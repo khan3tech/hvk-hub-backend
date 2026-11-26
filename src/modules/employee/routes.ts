@@ -5,6 +5,11 @@ import { authenticate } from "../../middleware/authenticate.js";
 import { authorize } from "../../middleware/authorize.js";
 import { validate } from "../../middleware/validate.js";
 import * as controller from "./controller.js";
+import * as profile from "./profile.js";
+import { handle } from "../../lib/handle.js";
+import { uploadImage } from "../../middleware/upload.js";
+import { orgOf } from "../../lib/tenant.js";
+import type { AccessTokenPayload } from "../../lib/jwt.js";
 import {
   CreateEmployeeRequestSchema,
   CreateEmployeeResponseSchema,
@@ -45,6 +50,33 @@ employeeRouter.get("/directory", authenticate, (req, res, next) => {
 employeeRouter.get("/me/team", authenticate, authorize("MANAGER"), (req, res, next) => {
   controller.getTeamView(req, res).catch(next);
 });
+
+// --- Self-service profile (My profile): personal details + profile picture. Registered before
+// "/:id" so "/me/..." isn't read as an id. Email and job details are not editable here.
+const actorOf = (req: Parameters<typeof orgOf>[0]) => req.user as AccessTokenPayload;
+employeeRouter.get("/me/profile", authenticate, handle(async (req, res) => {
+  res.json(await profile.getPersonalDetails(orgOf(req), actorOf(req).employeeId ?? "", actorOf(req)));
+}));
+employeeRouter.patch("/me/profile", authenticate, validate(profile.UpdateMyProfileSchema), handle(async (req, res) => {
+  res.json(await profile.updateMyProfile(orgOf(req), actorOf(req), req.body));
+}));
+employeeRouter.post("/me/photo", authenticate, uploadImage(profile.PHOTO_MAX_BYTES), handle(async (req, res) => {
+  res.json(await profile.setMyPhoto(orgOf(req), actorOf(req), req.file!));
+}));
+employeeRouter.delete("/me/photo", authenticate, handle(async (req, res) => {
+  await profile.removeMyPhoto(orgOf(req), actorOf(req));
+  res.status(204).end();
+}));
+employeeRouter.get("/:id/personal", authenticate, handle(async (req, res) => {
+  res.json(await profile.getPersonalDetails(orgOf(req), req.params.id ?? "", actorOf(req)));
+}));
+employeeRouter.get("/:id/photo", authenticate, handle(async (req, res) => {
+  const { stream, contentType } = await profile.openPhoto(orgOf(req), req.params.id ?? "");
+  res.setHeader("Content-Type", contentType);
+  res.setHeader("Cache-Control", "private, max-age=86400");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  stream.pipe(res);
+}));
 
 employeeRouter.get("/:id", authenticate, (req, res, next) => {
   controller.getEmployee(req, res).catch(next);

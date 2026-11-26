@@ -11,10 +11,21 @@ function getOrgId(req: Request): string {
   return orgOf(req);
 }
 
+// The photo's storage key/type stay server-side; clients get photoUpdatedAt and fetch
+// GET /employees/:id/photo.
+function publicEmployee<T>(value: T): T {
+  if (Array.isArray(value)) return value.map(publicEmployee) as T;
+  if (value && typeof value === "object" && "photoKey" in (value as object)) {
+    const { photoKey: _k, photoContentType: _t, ...rest } = value as Record<string, unknown>;
+    return rest as T;
+  }
+  return value;
+}
+
 export async function createEmployee(req: Request, res: Response): Promise<void> {
   const actor = req.user as AccessTokenPayload;
   const result = await employeeService.createEmployee(getOrgId(req), req.body, actor);
-  res.status(201).json(result);
+  res.status(201).json(publicEmployee(result));
 }
 
 export async function getEmployee(req: Request, res: Response): Promise<void> {
@@ -22,7 +33,7 @@ export async function getEmployee(req: Request, res: Response): Promise<void> {
   const { id } = req.params;
   if (!id) throw new DomainError("NOT_FOUND", "Employee not found.", 404);
   const employee = await employeeService.getEmployee(getOrgId(req), id, actor);
-  res.json(employee);
+  res.json(publicEmployee(employee));
 }
 
 export async function listEmployees(req: Request, res: Response): Promise<void> {
@@ -33,7 +44,7 @@ export async function listEmployees(req: Request, res: Response): Promise<void> 
     designation,
     status,
   });
-  res.json(result);
+  res.json(publicEmployee(result));
 }
 
 export async function searchDirectory(req: Request, res: Response): Promise<void> {
@@ -47,7 +58,7 @@ export async function updateEmployee(req: Request, res: Response): Promise<void>
   const { id } = req.params;
   if (!id) throw new DomainError("NOT_FOUND", "Employee not found.", 404);
   const result = await employeeService.updateEmployee(getOrgId(req), id, req.body, actor);
-  res.json(result);
+  res.json(publicEmployee(result));
 }
 
 export async function offboardEmployee(req: Request, res: Response): Promise<void> {

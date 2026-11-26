@@ -60,12 +60,13 @@ function generateTemporaryPassword(): string {
   return randomBytes(9).toString("base64url");
 }
 
-function toDirectoryEntry(employee: { id: string; name: string; departmentId: string | null; designationId: string | null }) {
+function toDirectoryEntry(employee: { id: string; name: string; departmentId: string | null; designationId: string | null; photoUpdatedAt?: Date | null }) {
   return {
     id: employee.id,
     name: employee.name,
     departmentId: employee.departmentId,
     designationId: employee.designationId,
+    photoUpdatedAt: employee.photoUpdatedAt ?? null,
   };
 }
 

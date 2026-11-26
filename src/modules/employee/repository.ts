@@ -107,3 +107,18 @@ export function designationInOrg(orgId: string, id: string) {
 export function updateDepartment(id: string, data: Prisma.DepartmentUncheckedUpdateInput) {
   return prisma.department.update({ where: { id }, data });
 }
+
+// --- Self-service profile (personal details + photo) ---
+
+export function findPersonalDetails(employeeId: string) {
+  return prisma.employeePersonalDetails.findUnique({ where: { employeeId } });
+}
+
+export function saveProfile(orgId: string, employeeId: string, name: string | undefined, details: Record<string, unknown>) {
+  return prisma.$transaction(async (tx) => {
+    if (name !== undefined) await tx.employee.update({ where: { id: employeeId }, data: { name } });
+    if (Object.keys(details).length) {
+      await tx.employeePersonalDetails.upsert({ where: { employeeId }, update: details, create: { employeeId, orgId, ...details } });
+    }
+  });
+}
